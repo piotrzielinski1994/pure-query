@@ -32,6 +32,7 @@ UI design rules for this app. Entries are about *visual language and interaction
 
 - Theme via CSS tokens (`bg-background`, `bg-muted/30`, `text-foreground`, `border-border`), not hard-coded colors, so light/dark both work.
 - Status colors: success green (`text-green-600 dark:text-green-400`), error/destructive red (`text-red-600 dark:text-red-400`). A destructive action button (e.g. Disconnect) is filled red.
+- **A primary action button is the filled `default` Button variant** (`bg-primary text-primary-foreground`, same look as requi's `Send`/`Save`) - the one solid, high-contrast control that runs the panel's main action (run filter, send, save). Use it for the single primary action per surface; everything else stays `ghost`/`outline`. Don't restyle a primary action as a faint icon button.
 - Status dots are a small `size-2` filled circle, right-aligned, never with a text label leaking into an accessible name (give the row an explicit `aria-label`).
 
 ## Layout

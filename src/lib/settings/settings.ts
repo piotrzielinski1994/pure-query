@@ -1,7 +1,3 @@
-import type {
-  ConnectionConfig,
-  DbEngine,
-} from "@/components/workspace/mock-data";
 import type { SplitOrientation } from "@/components/workspace/workspace-context";
 
 export type PanelLayout = Record<string, number>;
@@ -17,7 +13,6 @@ export type Settings = {
   expandedIds: string[];
   openTabIds: string[];
   activeTabId: string | null;
-  connections: Record<string, ConnectionConfig>;
 };
 
 export type SettingsStore = {
@@ -34,12 +29,9 @@ export const DEFAULT_SETTINGS: Settings = {
   expandedIds: [],
   openTabIds: [],
   activeTabId: null,
-  connections: {},
 };
 
 const GROUP_KEYS: PanelGroupKey[] = ["workspace", "main", "sql"];
-
-const ENGINES = new Set<DbEngine>(["postgres", "mysql"]);
 
 const SPLIT_ORIENTATIONS = new Set<SplitOrientation>([
   "horizontal",
@@ -72,30 +64,6 @@ function mergeLayouts(value: unknown): Settings["layouts"] {
     const layout = value[key];
     return isPanelLayout(layout) ? { ...acc, [key]: layout } : acc;
   }, {});
-}
-
-function isConnectionConfig(value: unknown): value is ConnectionConfig {
-  return (
-    isRecord(value) &&
-    typeof value.engine === "string" &&
-    ENGINES.has(value.engine as DbEngine) &&
-    typeof value.host === "string" &&
-    typeof value.port === "number" &&
-    typeof value.database === "string" &&
-    typeof value.user === "string" &&
-    typeof value.password === "string"
-  );
-}
-
-function mergeConnections(value: unknown): Record<string, ConnectionConfig> {
-  if (!isRecord(value)) {
-    return {};
-  }
-  return Object.entries(value).reduce<Record<string, ConnectionConfig>>(
-    (acc, [id, config]) =>
-      isConnectionConfig(config) ? { ...acc, [id]: config } : acc,
-    {},
-  );
 }
 
 function mergeSplitOrientation(
@@ -135,6 +103,5 @@ export function mergeSettings(defaults: Settings, partial: unknown): Settings {
     expandedIds: isStringArray(partial.expandedIds),
     openTabIds,
     activeTabId,
-    connections: mergeConnections(partial.connections),
   };
 }

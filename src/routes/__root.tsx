@@ -2,13 +2,18 @@ import { useState } from "react";
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { SettingsProvider } from "@/lib/settings/settings-context";
 import { createTauriSettingsStore } from "@/lib/settings/tauri-store";
+import { WorkspaceStoreProvider } from "@/lib/workspace/workspace-store-context";
+import { createTauriWorkspaceStore } from "@/lib/workspace/tauri-store";
 
 function RootLayout() {
   const [settingsStore] = useState(createTauriSettingsStore);
+  const [workspaceStore] = useState(createTauriWorkspaceStore);
 
   return (
     <SettingsProvider store={settingsStore}>
-      <Outlet />
+      <WorkspaceStoreProvider store={workspaceStore}>
+        <Outlet />
+      </WorkspaceStoreProvider>
     </SettingsProvider>
   );
 }

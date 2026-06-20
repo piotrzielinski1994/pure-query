@@ -16,6 +16,7 @@ export function useConnectionActions() {
     setConnectionStatus,
     setDatabaseTables,
     removeConnection,
+    updateDatabaseConfig,
     connectionStatus,
   } = useWorkspace();
 
@@ -27,6 +28,7 @@ export function useConnectionActions() {
     try {
       const tables = await connectDatabase(config);
       setConnection(id, config);
+      updateDatabaseConfig(id, config);
       setDatabaseTables(id, tables);
       setConnectionStatus(id, "connected");
       toast.success(`Connected - ${tables.length} tables`);

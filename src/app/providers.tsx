@@ -5,7 +5,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
-        defaultOptions: { queries: { retry: false } },
+        defaultOptions: {
+          queries: { retry: false, refetchOnWindowFocus: false },
+        },
       }),
   );
 

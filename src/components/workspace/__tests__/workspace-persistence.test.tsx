@@ -38,7 +38,6 @@ function WorkspaceProbe() {
     toggleSplitOrientation,
     toggleExpand,
     openNode,
-    setConnection,
   } = useWorkspace();
 
   return (
@@ -75,12 +74,6 @@ function WorkspaceProbe() {
       </button>
       <button type="button" onClick={() => openNode("db-admin")}>
         open db-admin
-      </button>
-      <button
-        type="button"
-        onClick={() => setConnection("db-app", adminConnection)}
-      >
-        set connection
       </button>
     </div>
   );
@@ -300,25 +293,6 @@ describe("WorkspaceProvider onPersist side-effect contract", () => {
       const last = onPersist.mock.calls.at(-1)?.[0];
       expect(last?.openTabIds).toContain("db-admin");
       expect(last?.activeTabId).toBe("db-admin");
-    });
-  });
-
-  // AC-008 - side-effect-contract
-  it("should call onPersist with the new connection in connections when setConnection fires", async () => {
-    const user = userEvent.setup();
-    const onPersist = vi.fn<(settings: Settings) => void>();
-
-    render(
-      <WorkspaceProvider tree={fixtureTree} onPersist={onPersist}>
-        <WorkspaceProbe />
-      </WorkspaceProvider>,
-    );
-
-    await user.click(screen.getByRole("button", { name: /set connection/i }));
-
-    await waitFor(() => {
-      const last = onPersist.mock.calls.at(-1)?.[0];
-      expect(last?.connections["db-app"]).toEqual(adminConnection);
     });
   });
 });
