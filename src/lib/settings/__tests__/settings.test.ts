@@ -5,16 +5,6 @@ import {
   mergeSettings,
   type Settings,
 } from "@/lib/settings/settings";
-import type { ConnectionConfig } from "@/components/workspace/mock-data";
-
-const validConnection: ConnectionConfig = {
-  engine: "postgres",
-  host: "db.internal",
-  port: 5433,
-  database: "admin",
-  user: "seed_admin",
-  password: "s3cr3t-pw",
-};
 
 describe("DEFAULT_SETTINGS", () => {
   // AC-001 - behavior
@@ -28,7 +18,6 @@ describe("DEFAULT_SETTINGS", () => {
       expandedIds: [],
       openTabIds: [],
       activeTabId: null,
-      connections: {},
     });
   });
 });
@@ -49,7 +38,6 @@ describe("mergeSettings", () => {
       expandedIds: ["folder-staging", "db-admin"],
       openTabIds: ["db-admin", "tbl-accounts"],
       activeTabId: "tbl-accounts",
-      connections: { "db-admin": validConnection },
     };
 
     expect(mergeSettings(DEFAULT_SETTINGS, full)).toEqual(full);
@@ -66,7 +54,6 @@ describe("mergeSettings", () => {
     expect(merged.expandedIds).toEqual([]);
     expect(merged.openTabIds).toEqual([]);
     expect(merged.activeTabId).toBeNull();
-    expect(merged.connections).toEqual({});
   });
 
   // AC-002, E-3 - behavior
@@ -86,7 +73,6 @@ describe("mergeSettings", () => {
       expandedIds: [],
       openTabIds: [],
       activeTabId: null,
-      connections: {},
     });
     expect(merged).not.toHaveProperty("bogus");
     expect(merged).not.toHaveProperty("extra");
@@ -282,103 +268,5 @@ describe("mergeSettings layouts", () => {
 
     expect(merged.layouts).toEqual({ main: { content: 75, console: 25 } });
     expect(merged.layouts).not.toHaveProperty("workspace");
-  });
-});
-
-describe("mergeSettings connections", () => {
-  // AC-003 - behavior
-  it("should keep a valid ConnectionConfig entry", () => {
-    const merged = mergeSettings(DEFAULT_SETTINGS, {
-      connections: { "db-admin": validConnection },
-    });
-
-    expect(merged.connections).toEqual({ "db-admin": validConnection });
-  });
-
-  // AC-003 - behavior
-  it("should default connections to an empty record if the key is absent", () => {
-    expect(
-      mergeSettings(DEFAULT_SETTINGS, { sidebarHidden: true }).connections,
-    ).toEqual({});
-  });
-
-  // AC-003, E-2 - behavior
-  it("should default connections to empty if it is not an object", () => {
-    expect(
-      mergeSettings(DEFAULT_SETTINGS, { connections: "nope" }).connections,
-    ).toEqual({});
-    expect(
-      mergeSettings(DEFAULT_SETTINGS, { connections: [validConnection] })
-        .connections,
-    ).toEqual({});
-  });
-
-  // AC-003, E-4 - behavior
-  it("should keep valid connection entries and drop the malformed ones", () => {
-    const merged = mergeSettings(DEFAULT_SETTINGS, {
-      connections: {
-        "db-good": validConnection,
-        "db-missing-field": {
-          engine: "postgres",
-          host: "h",
-          port: 5432,
-          database: "d",
-          user: "u",
-        },
-        "db-bad-engine": { ...validConnection, engine: "sqlite" },
-        "db-string-port": { ...validConnection, port: "5432" },
-        "db-not-object": 42,
-      },
-    });
-
-    expect(merged.connections).toEqual({ "db-good": validConnection });
-    expect(merged.connections).not.toHaveProperty("db-missing-field");
-    expect(merged.connections).not.toHaveProperty("db-bad-engine");
-    expect(merged.connections).not.toHaveProperty("db-string-port");
-    expect(merged.connections).not.toHaveProperty("db-not-object");
-  });
-
-  // AC-003, E-4 - behavior
-  it("should accept a mysql engine connection", () => {
-    const mysqlConn: ConnectionConfig = { ...validConnection, engine: "mysql" };
-    const merged = mergeSettings(DEFAULT_SETTINGS, {
-      connections: { "db-my": mysqlConn },
-    });
-
-    expect(merged.connections["db-my"]).toEqual(mysqlConn);
-  });
-
-  // AC-003, E-4 - behavior
-  it("should drop an entry whose host is not a string", () => {
-    const merged = mergeSettings(DEFAULT_SETTINGS, {
-      connections: { "db-x": { ...validConnection, host: 123 } },
-    });
-
-    expect(merged.connections).toEqual({});
-  });
-
-  // AC-003, E-4 - behavior
-  it("should drop an entry whose password is missing", () => {
-    const noPassword = {
-      engine: validConnection.engine,
-      host: validConnection.host,
-      port: validConnection.port,
-      database: validConnection.database,
-      user: validConnection.user,
-    };
-    const merged = mergeSettings(DEFAULT_SETTINGS, {
-      connections: { "db-x": noPassword },
-    });
-
-    expect(merged.connections).toEqual({});
-  });
-
-  // AC-003, E-4 - behavior
-  it("should not throw if a connections entry is garbage", () => {
-    expect(() =>
-      mergeSettings(DEFAULT_SETTINGS, {
-        connections: { a: null, b: [], c: "x", d: 1 },
-      }),
-    ).not.toThrow();
   });
 });

@@ -12,16 +12,6 @@ const nonDefaultSettings: Settings = {
   expandedIds: ["folder-staging", "db-admin"],
   openTabIds: ["db-admin", "tbl-accounts"],
   activeTabId: "tbl-accounts",
-  connections: {
-    "db-admin": {
-      engine: "postgres",
-      host: "db.internal",
-      port: 5433,
-      database: "admin",
-      user: "seed_admin",
-      password: "s3cr3t-pw",
-    },
-  },
 };
 
 describe("createInMemorySettingsStore", () => {

@@ -79,6 +79,7 @@ type WorkspaceContextValue = {
   setConnectionStatus: (id: string, status: ConnectionStatus) => void;
   setConnection: (id: string, config: ConnectionConfig) => void;
   removeConnection: (id: string) => void;
+  updateDatabaseConfig: (id: string, config: ConnectionConfig) => void;
   setDatabaseTables: (id: string, tableNames: string[]) => void;
   upsertPendingEdit: (edit: PendingEdit) => void;
   discardPendingEdit: (id: string) => void;
@@ -143,6 +144,25 @@ function replaceDatabaseTables(
   });
 }
 
+function applyDatabaseConfig(
+  nodes: TreeNode[],
+  databaseId: string,
+  config: ConnectionConfig,
+): TreeNode[] {
+  return nodes.map((node) => {
+    if (node.kind === "folder") {
+      return {
+        ...node,
+        children: applyDatabaseConfig(node.children, databaseId, config),
+      };
+    }
+    if (node.kind === "database" && node.id === databaseId) {
+      return { ...node, ...config };
+    }
+    return node;
+  });
+}
+
 function toggleInSet(set: Set<string>, id: string): Set<string> {
   const next = new Set(set);
   if (next.has(id)) {
@@ -167,6 +187,7 @@ type WorkspaceProviderProps = {
   initialSplitOrientation?: SplitOrientation;
   initialLayouts?: Settings["layouts"];
   onPersist?: (settings: Settings) => void;
+  onTreeChange?: (tree: TreeNode[]) => void;
 };
 
 export function WorkspaceProvider({
@@ -183,6 +204,7 @@ export function WorkspaceProvider({
   initialSplitOrientation = "horizontal",
   initialLayouts = {},
   onPersist,
+  onTreeChange,
 }: WorkspaceProviderProps) {
   const [tree, setTree] = useState(initialTree);
   const nodesById = useMemo(() => indexNodes(tree), [tree]);
@@ -279,6 +301,8 @@ export function WorkspaceProvider({
           next.delete(id);
           return next;
         }),
+      updateDatabaseConfig: (id, config) =>
+        setTree((current) => applyDatabaseConfig(current, id, config)),
       setDatabaseTables: (id, tableNames) =>
         setTree((current) =>
           replaceDatabaseTables(current, id, tablesFromNames(id, tableNames)),
@@ -343,7 +367,6 @@ export function WorkspaceProvider({
       expandedIds: [...expandedIds],
       openTabIds,
       activeTabId,
-      connections: Object.fromEntries(connections),
     });
   }, [
     onPersist,
@@ -354,8 +377,13 @@ export function WorkspaceProvider({
     expandedIds,
     openTabIds,
     activeTabId,
-    connections,
   ]);
+
+  useEffect(() => {
+    if (onTreeChange) {
+      onTreeChange(tree);
+    }
+  }, [onTreeChange, tree]);
 
   return (
     <WorkspaceContext.Provider value={value}>

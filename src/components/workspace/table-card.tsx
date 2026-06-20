@@ -5,6 +5,14 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DataGrid, renderCell, type Cell } from "@/components/workspace/data-grid";
 import { fetchTable, updateTable, type CellEdit } from "@/lib/tauri";
 import { useWorkspace } from "@/components/workspace/workspace-context";
@@ -331,18 +339,42 @@ function staticRows(table: TableNode, filter: string | undefined): Cell[][] {
 }
 
 export function TableCard() {
-  const { activeNode, connections, databaseIdByTableId } = useWorkspace();
+  const {
+    activeNode,
+    connections,
+    databaseIdByTableId,
+    pendingEdits,
+    discardPendingEditsForTable,
+  } = useWorkspace();
   const [filterText, setFilterText] = useState("");
   const [appliedFilter, setAppliedFilter] = useState("");
+  const [isDiscardPromptOpen, setIsDiscardPromptOpen] = useState(false);
 
   const isTable = activeNode?.kind === "table";
   const databaseId = isTable
     ? databaseIdByTableId.get(activeNode.id)
     : undefined;
   const config = databaseId ? connections.get(databaseId) : undefined;
+  const tableId = isTable ? activeNode.id : undefined;
+  const hasPendingEdits = pendingEdits.some(
+    (edit) => edit.tableId === tableId,
+  );
 
   const filter = appliedFilter.trim() ? appliedFilter.trim() : undefined;
-  const applyFilter = () => setAppliedFilter(filterText);
+  const applyFilter = () => {
+    if (hasPendingEdits) {
+      setIsDiscardPromptOpen(true);
+      return;
+    }
+    setAppliedFilter(filterText);
+  };
+  const confirmDiscardAndFilter = () => {
+    if (tableId) {
+      discardPendingEditsForTable(tableId);
+    }
+    setAppliedFilter(filterText);
+    setIsDiscardPromptOpen(false);
+  };
 
   if (!activeNode || activeNode.kind !== "table") {
     return null;
@@ -362,6 +394,7 @@ export function TableCard() {
           onChange={(event) => setFilterText(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
+              event.preventDefault();
               applyFilter();
             }
           }}
@@ -369,10 +402,9 @@ export function TableCard() {
         />
         <Button
           type="button"
-          variant="ghost"
           aria-label="Run filter"
           onClick={applyFilter}
-          className="h-full rounded-none border-l px-3"
+          className="h-full rounded-none border-0 border-l border-l-border px-3"
         >
           <Search className="size-4" />
         </Button>
@@ -392,6 +424,31 @@ export function TableCard() {
           />
         )}
       </div>
+      <Dialog
+        open={isDiscardPromptOpen}
+        onOpenChange={setIsDiscardPromptOpen}
+      >
+        <DialogContent onOpenAutoFocus={(event) => event.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Discard unsaved changes?</DialogTitle>
+            <DialogDescription>
+              Filtering reloads the rows and will discard your unsaved edits to
+              this table.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setIsDiscardPromptOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={confirmDiscardAndFilter}>
+              Discard and filter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

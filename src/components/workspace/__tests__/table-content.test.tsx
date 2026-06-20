@@ -474,3 +474,112 @@ describe("TableCard cell editing", () => {
     expect(editedCell).toHaveClass("bg-amber-500/15");
   });
 });
+
+describe("TableCard filter with unsaved edits", () => {
+  async function editPrice(user: ReturnType<typeof userEvent.setup>) {
+    await user.dblClick(await screen.findByText("999"));
+    const input = screen.getByDisplayValue("999");
+    await user.clear(input);
+    await user.type(input, "1500");
+    await user.keyboard("{Enter}");
+  }
+
+  // Runs the filter via the Search button (Enter has the same effect; the button
+  // avoids focus-routing flakiness after the cell-edit input unmounts in jsdom).
+  async function runFilter(
+    user: ReturnType<typeof userEvent.setup>,
+    expr: string,
+  ) {
+    await user.type(screen.getByRole("textbox", { name: /filter/i }), expr);
+    await user.click(screen.getByRole("button", { name: /run filter/i }));
+  }
+
+  // behavior (filtering with pending edits prompts instead of silently filtering)
+  it("should prompt before filtering when there are unsaved edits", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValue(
+      rowsResult(["id", "price"], [["1", "999"]], "id"),
+    );
+    renderLive();
+
+    await editPrice(user);
+    mockFetch.mockClear();
+
+    await runFilter(user, "price > 10");
+
+    // a confirm dialog appears; the filter has NOT run yet
+    expect(
+      await screen.findByRole("dialog", { name: /discard/i }),
+    ).toBeInTheDocument();
+    expect(mockFetch).not.toHaveBeenCalledWith(config, "product", "price > 10");
+  });
+
+  // behavior (confirming discards the edits and applies the filter)
+  it("should discard the edits and run the filter when the prompt is confirmed", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValue(
+      rowsResult(["id", "price"], [["1", "999"]], "id"),
+    );
+    renderLive();
+
+    await editPrice(user);
+    await runFilter(user, "price > 10");
+
+    await user.click(
+      await screen.findByRole("button", { name: /discard and filter/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenLastCalledWith(
+        config,
+        "product",
+        "price > 10",
+      );
+    });
+    // edits are gone (no Save bar, no Changes tab)
+    expect(screen.queryByRole("button", { name: /save/i })).toBeNull();
+    expect(
+      screen.queryByRole("tab", { name: /changes \(\d+\)/i }),
+    ).toBeNull();
+  });
+
+  // behavior (cancelling keeps edits and does not filter)
+  it("should keep the edits and not filter when the prompt is cancelled", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValue(
+      rowsResult(["id", "price"], [["1", "999"]], "id"),
+    );
+    renderLive();
+
+    await editPrice(user);
+    mockFetch.mockClear();
+
+    await runFilter(user, "price > 10");
+
+    await user.click(await screen.findByRole("button", { name: /cancel/i }));
+
+    expect(mockFetch).not.toHaveBeenCalledWith(config, "product", "price > 10");
+    expect(screen.getByRole("button", { name: /save/i })).toBeInTheDocument();
+  });
+
+  // behavior (no prompt when there are no pending edits)
+  it("should filter immediately when there are no unsaved edits", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValue(
+      rowsResult(["id", "price"], [["1", "999"]], "id"),
+    );
+    renderLive();
+
+    await screen.findByText("999");
+    await runFilter(user, "price > 10");
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenLastCalledWith(
+        config,
+        "product",
+        "price > 10",
+      );
+    });
+  });
+});

@@ -58,7 +58,7 @@ export function Console() {
         </ConsoleTabButton>
       </div>
       {tab === "log" ? (
-        <ScrollArea className="flex-1">
+        <ScrollArea key="log" className="flex-1">
           <ul className="p-2">
             {consoleLines.map((line, index) => (
               <li key={index} className="py-0.5 text-muted-foreground">
@@ -68,7 +68,7 @@ export function Console() {
           </ul>
         </ScrollArea>
       ) : tab === "changes" ? (
-        <ScrollArea className="flex-1">
+        <ScrollArea key="changes" className="flex-1">
           {pendingCount === 0 ? (
             <p className="p-3 text-muted-foreground">No pending changes.</p>
           ) : (
@@ -95,7 +95,7 @@ export function Console() {
           )}
         </ScrollArea>
       ) : (
-        <ScrollArea className="flex-1">
+        <ScrollArea key="history" className="flex-1">
           {history.length === 0 ? (
             <p className="p-3 text-muted-foreground">
               No queries run yet this session.
