@@ -56,6 +56,7 @@ export const usersTable: TableNode = {
   kind: "table",
   id: "tbl-users",
   name: "users",
+  schema: null,
   columns: [
     { name: "id", type: "int4" },
     { name: "name", type: "text" },
@@ -71,6 +72,7 @@ export const ordersTable: TableNode = {
   kind: "table",
   id: "tbl-orders",
   name: "orders",
+  schema: null,
   columns: [
     { name: "id", type: "int4" },
     { name: "amount", type: "numeric" },
@@ -86,6 +88,7 @@ export const emptyAuditTable: TableNode = {
   kind: "table",
   id: "tbl-empty",
   name: "empty_audit",
+  schema: null,
   columns: [
     { name: "id", type: "int4" },
     { name: "event", type: "text" },
@@ -97,6 +100,7 @@ export const accountsTable: TableNode = {
   kind: "table",
   id: "tbl-accounts",
   name: "accounts",
+  schema: null,
   columns: [
     { name: "id", type: "int4" },
     { name: "role", type: "text" },
@@ -111,6 +115,7 @@ export const auditLogTable: TableNode = {
   kind: "table",
   id: "tbl-audit",
   name: "audit_log",
+  schema: null,
   columns: [
     { name: "id", type: "int4" },
     { name: "action", type: "text" },

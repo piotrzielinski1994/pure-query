@@ -18,6 +18,7 @@ import type {
   DatabaseNode,
   FolderNode,
   TableNode,
+  TableRef,
   TableSchema,
   TreeNode,
 } from "@/lib/workspace/model";
@@ -108,7 +109,7 @@ type WorkspaceContextValue = {
   removeConnection: (id: string) => void;
   setDatabaseSchema: (id: string, schema: TableSchema[]) => void;
   updateDatabaseConfig: (id: string, config: ConnectionConfig) => void;
-  setDatabaseTables: (id: string, tableNames: string[]) => void;
+  setDatabaseTables: (id: string, tables: TableRef[]) => void;
   upsertPendingEdit: (edit: PendingMutation) => void;
   discardPendingEdit: (id: string) => void;
   discardPendingEditsForTable: (tableId: string) => void;
@@ -145,11 +146,14 @@ function indexTableParents(nodes: TreeNode[]): Map<string, string> {
   return new Map(nodes.flatMap(walk));
 }
 
-function tablesFromNames(databaseId: string, names: string[]): TableNode[] {
-  return names.map((name) => ({
+function tablesFromRefs(databaseId: string, refs: TableRef[]): TableNode[] {
+  return refs.map(({ schema, name }) => ({
     kind: "table",
-    id: `${databaseId}::${name}`,
+    // The schema is part of the id so two tables that share a name across schemas
+    // (public.users / analytics.users) are distinct tree nodes and tab keys.
+    id: `${databaseId}::${schema ?? ""}::${name}`,
     name,
+    schema,
     columns: [],
     rows: [],
   }));
@@ -512,9 +516,9 @@ export function WorkspaceProvider({
         setDatabaseSchemasMap((current) => new Map(current).set(id, schema)),
       updateDatabaseConfig: (id, config) =>
         setTree((current) => applyDatabaseConfig(current, id, config)),
-      setDatabaseTables: (id, tableNames) =>
+      setDatabaseTables: (id, tables) =>
         setTree((current) =>
-          replaceDatabaseTables(current, id, tablesFromNames(id, tableNames)),
+          replaceDatabaseTables(current, id, tablesFromRefs(id, tables)),
         ),
       pendingEdits,
       upsertPendingEdit,

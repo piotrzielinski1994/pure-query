@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   ConnectionConfig,
   Sort,
+  TableRef,
   TableRows,
   TableSchema,
 } from "@/lib/workspace/model";
@@ -15,8 +16,8 @@ export function greet(name: string): Promise<string> {
 export function connectDatabase(
   connectionId: string,
   config: ConnectionConfig,
-): Promise<string[]> {
-  return invoke<string[]>("connect_database", { connectionId, config });
+): Promise<TableRef[]> {
+  return invoke<TableRef[]>("connect_database", { connectionId, config });
 }
 
 export function disconnectDatabase(connectionId: string): Promise<void> {
@@ -30,10 +31,17 @@ export function fetchSchema(connectionId: string): Promise<TableSchema[]> {
 export function fetchTable(
   connectionId: string,
   table: string,
-  opts?: { limit?: number; offset?: number; filter?: string; sort?: Sort | null },
+  opts?: {
+    schema?: string | null;
+    limit?: number;
+    offset?: number;
+    filter?: string;
+    sort?: Sort | null;
+  },
 ): Promise<TableRows> {
   return invoke<TableRows>("fetch_table", {
     connectionId,
+    schema: opts?.schema ?? null,
     table,
     limit: opts?.limit ?? null,
     offset: opts?.offset ?? 0,
@@ -46,9 +54,11 @@ export function countTable(
   connectionId: string,
   table: string,
   filter?: string,
+  schema?: string | null,
 ): Promise<number> {
   return invoke<number>("count_table", {
     connectionId,
+    schema: schema ?? null,
     table,
     filter: filter ?? null,
   });
@@ -77,8 +87,14 @@ export function applyRowMutations(
   connectionId: string,
   table: string,
   mutations: RowMutation[],
+  schema?: string | null,
 ): Promise<number> {
-  return invoke<number>("apply_mutations", { connectionId, table, mutations });
+  return invoke<number>("apply_mutations", {
+    connectionId,
+    schema: schema ?? null,
+    table,
+    mutations,
+  });
 }
 
 export type QueryOutcome = {

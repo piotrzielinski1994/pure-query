@@ -162,7 +162,7 @@ describe("SettingsTab", () => {
   // AC-003, TC-001 - behavior (Connect calls the backend once with the form config)
   it("should invoke connectDatabase once with the current form config when Connect is clicked", async () => {
     const user = userEvent.setup();
-    mockConnect.mockResolvedValueOnce(["a", "b"]);
+    mockConnect.mockResolvedValueOnce([{ schema: null, name: "a" }, { schema: null, name: "b" }]);
     renderSettings();
 
     await user.click(screen.getByRole("button", { name: /^connect$/i }));
@@ -216,7 +216,7 @@ describe("SettingsTab", () => {
   // AC-004, TC-001 - side-effect-contract (success toast reports the table count)
   it("should fire a success toast reporting the table count when the connect resolves", async () => {
     const user = userEvent.setup();
-    mockConnect.mockResolvedValueOnce(["a", "b"]);
+    mockConnect.mockResolvedValueOnce([{ schema: null, name: "a" }, { schema: null, name: "b" }]);
     renderSettings();
 
     await user.click(screen.getByRole("button", { name: /^connect$/i }));
@@ -250,9 +250,11 @@ describe("SettingsTab", () => {
   // abortable, not a dead "Connecting..." label)
   it("should swap Connect for an enabled Cancel button while the connect is in flight", async () => {
     const user = userEvent.setup();
-    let resolveConnect: (tables: string[]) => void = () => {};
+    let resolveConnect: (
+      tables: import("@/lib/workspace/model").TableRef[],
+    ) => void = () => {};
     mockConnect.mockReturnValueOnce(
-      new Promise<string[]>((resolve) => {
+      new Promise<import("@/lib/workspace/model").TableRef[]>((resolve) => {
         resolveConnect = resolve;
       }),
     );
@@ -333,7 +335,7 @@ describe("SettingsTab connect flow updates the sidebar", () => {
   // AC-004, TC-001 - behavior (sidebar tables replaced by fetched names)
   it("should reveal the fetched table names in the sidebar on a successful connect", async () => {
     const user = userEvent.setup();
-    mockConnect.mockResolvedValueOnce(["fetched_one", "fetched_two"]);
+    mockConnect.mockResolvedValueOnce([{ schema: null, name: "fetched_one" }, { schema: null, name: "fetched_two" }]);
     renderSettings({
       activeTabId: "db-admin",
       expanded: ["folder-staging", "db-admin"],

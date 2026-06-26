@@ -37,7 +37,7 @@ const config: ConnectionConfig = {
 };
 
 const schema: TableSchema[] = [
-  { name: "users", columns: [{ name: "id", dataType: "int4" }] },
+  { schema: null, name: "users", columns: [{ name: "id", dataType: "int4" }] },
 ];
 
 const tree: TreeNode[] = [
@@ -105,7 +105,7 @@ describe("connect schema fetch", () => {
   // TC-011 / AC-007 - behavior: a successful connect stores the fetched schema keyed by db id.
   it("should store the fetched schema for the database when connect succeeds", async () => {
     const user = userEvent.setup();
-    mockConnect.mockResolvedValue(["users"]);
+    mockConnect.mockResolvedValue([{ schema: null, name: "users" }]);
     mockFetchSchema.mockResolvedValue(schema);
     renderProbe();
 
@@ -121,7 +121,7 @@ describe("connect schema fetch", () => {
   // TC-011 / AC-007 - behavior: disconnect clears the stored schema.
   it("should clear the stored schema when the database is disconnected", async () => {
     const user = userEvent.setup();
-    mockConnect.mockResolvedValue(["users"]);
+    mockConnect.mockResolvedValue([{ schema: null, name: "users" }]);
     mockFetchSchema.mockResolvedValue(schema);
     renderProbe();
 
@@ -140,7 +140,7 @@ describe("connect schema fetch", () => {
   // schema (no throw), so the editor still works with keyword completion.
   it("should store an empty schema when the schema fetch fails", async () => {
     const user = userEvent.setup();
-    mockConnect.mockResolvedValue(["users"]);
+    mockConnect.mockResolvedValue([{ schema: null, name: "users" }]);
     mockFetchSchema.mockRejectedValue("schema boom");
     renderProbe();
 

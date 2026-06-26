@@ -60,6 +60,7 @@ const connectedTree: TreeNode[] = [
         kind: "table",
         id: "db-ppp::product",
         name: "product",
+        schema: null,
         columns: [],
         rows: [],
       },
@@ -675,14 +676,19 @@ describe("TableCard cell editing", () => {
     await user.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(mockUpdate).toHaveBeenCalledWith("db-ppp", "product", [
-        expect.objectContaining({
-          kind: "cell",
-          column: "price",
-          pkValue: "1",
-          newValue: "1500",
-        }),
-      ]);
+      expect(mockUpdate).toHaveBeenCalledWith(
+        "db-ppp",
+        "product",
+        [
+          expect.objectContaining({
+            kind: "cell",
+            column: "price",
+            pkValue: "1",
+            newValue: "1500",
+          }),
+        ],
+        null,
+      );
     });
   });
 
@@ -1023,5 +1029,114 @@ describe("TableCard filter statement guard", () => {
     expect(mockToast.error).toHaveBeenCalledWith(
       expect.stringMatching(/one .*expression|semicolon/i),
     );
+  });
+});
+
+describe("TableCard schema-qualified addressing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCount.mockResolvedValue(0);
+  });
+
+  // A Postgres database whose open table lives in the "analytics" schema.
+  const schemaTree: TreeNode[] = [
+    {
+      kind: "database",
+      id: "db-ppp",
+      name: "ppp",
+      engine: "postgres",
+      host: "localhost",
+      port: 5432,
+      database: "ppp",
+      user: "postgres",
+      password: "postgres",
+      tables: [
+        {
+          kind: "table",
+          id: "db-ppp::analytics::events",
+          name: "events",
+          schema: "analytics",
+          columns: [],
+          rows: [],
+        },
+      ],
+      views: [],
+      sql: "",
+      savedScripts: [],
+      script: "",
+      result: {
+        status: "success",
+        timeMs: 0,
+        rowCount: 0,
+        columns: [],
+        rows: [],
+        message: "",
+      },
+    },
+  ];
+
+  function renderSchemaLive() {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    return render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceProvider
+          tree={schemaTree}
+          initialActiveTabId="db-ppp::analytics::events"
+          initialConnections={[["db-ppp", config]]}
+        >
+          <TableCard />
+          <Console />
+        </WorkspaceProvider>
+      </QueryClientProvider>,
+    );
+  }
+
+  // AC-007, AC-009, TC-002 — behavior (the table's schema flows to fetch + count)
+  it("should fetch and count with the table's schema for a Postgres schema table", async () => {
+    mockFetch.mockResolvedValueOnce(rowsResult(["id"], [["1"]]));
+    renderSchemaLive();
+
+    await screen.findByText("1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "db-ppp",
+      "events",
+      expect.objectContaining({ schema: "analytics" }),
+    );
+    expect(mockCount).toHaveBeenCalledWith(
+      "db-ppp",
+      "events",
+      undefined,
+      "analytics",
+    );
+  });
+
+  // AC-010, TC-002 — behavior (an edit applies against the schema-qualified table)
+  it("should apply a cell edit with the table's schema", async () => {
+    const user = userEvent.setup();
+    mockFetch.mockResolvedValue(
+      rowsResult(["id", "label"], [["1", "old"]], "id"),
+    );
+    mockUpdate.mockResolvedValue(1);
+    renderSchemaLive();
+
+    const cell = await screen.findByText("old");
+    await user.dblClick(cell);
+    const input = await screen.findByDisplayValue("old");
+    await user.clear(input);
+    await user.type(input, "new{Enter}");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(mockUpdate).toHaveBeenCalledWith(
+        "db-ppp",
+        "events",
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "cell", newValue: "new" }),
+        ]),
+        "analytics",
+      );
+    });
   });
 });

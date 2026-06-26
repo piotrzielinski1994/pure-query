@@ -67,6 +67,7 @@ const connectedTree: TreeNode[] = [
         kind: "table",
         id: "db-ppp::users",
         name: "users",
+        schema: null,
         columns: [],
         rows: [],
       },

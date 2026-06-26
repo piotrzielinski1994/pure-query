@@ -12,6 +12,7 @@ import type { TableSchema } from "@/lib/workspace/model";
 
 const schema: TableSchema[] = [
   {
+    schema: null,
     name: "users",
     columns: [
       { name: "user_id", dataType: "int4" },
@@ -19,6 +20,7 @@ const schema: TableSchema[] = [
     ],
   },
   {
+    schema: null,
     name: "orders",
     columns: [{ name: "order_id", dataType: "int4" }],
   },
@@ -154,6 +156,75 @@ describe("SqlEditor", () => {
     } | null;
     const labels = result?.options.map((option) => option.label) ?? [];
     expect(labels).toContain("user_id");
+  });
+
+  // behavior: an in-scope FROM table's columns complete for a BARE identifier (no `table.` prefix),
+  // so `select * from orders where o` suggests `order_id`.
+  it("should complete a FROM table's columns for a bare identifier", async () => {
+    const doc = "select * from orders where o";
+    const { container } = render(
+      <SqlEditor
+        value={doc}
+        onChange={() => {}}
+        engine="postgres"
+        schema={schema}
+      />,
+    );
+
+    const state = liveView(container).state;
+    const sources = state.languageDataAt<
+      (ctx: CompletionContext) => unknown
+    >("autocomplete", doc.length);
+    const ctx = new CompletionContext(state, doc.length, true);
+    const results = (await Promise.all(
+      sources.map((source) => source(ctx)),
+    )) as ({ options: { label: string }[] } | null)[];
+    const labels = results.flatMap((result) =>
+      (result?.options ?? []).map((option) => option.label),
+    );
+    expect(labels).toContain("order_id");
+    // not the other table's columns - `orders` is what's in scope, not `users`
+    expect(labels).not.toContain("user_id");
+  });
+
+  // behavior: a schema-qualified FROM (`from public.orders`) resolves the right table's columns for
+  // a bare identifier, and a same-named table in another schema does NOT bleed in.
+  it("should resolve columns for a schema-qualified FROM table", async () => {
+    const multiSchema: TableSchema[] = [
+      {
+        schema: "public",
+        name: "orders",
+        columns: [{ name: "public_order_id", dataType: "int4" }],
+      },
+      {
+        schema: "analytics",
+        name: "orders",
+        columns: [{ name: "analytics_order_id", dataType: "int4" }],
+      },
+    ];
+    const doc = "select * from public.orders where o";
+    const { container } = render(
+      <SqlEditor
+        value={doc}
+        onChange={() => {}}
+        engine="postgres"
+        schema={multiSchema}
+      />,
+    );
+
+    const state = liveView(container).state;
+    const sources = state.languageDataAt<
+      (ctx: CompletionContext) => unknown
+    >("autocomplete", doc.length);
+    const ctx = new CompletionContext(state, doc.length, true);
+    const results = (await Promise.all(
+      sources.map((source) => source(ctx)),
+    )) as ({ options: { label: string }[] } | null)[];
+    const labels = results.flatMap((result) =>
+      (result?.options ?? []).map((option) => option.label),
+    );
+    expect(labels).toContain("public_order_id");
+    expect(labels).not.toContain("analytics_order_id");
   });
 
   // TC-009 / AC-005 — behavior: with no schema, completion still offers SQL keywords.

@@ -52,23 +52,37 @@ function quoteIdent(engine: ConnectionConfig["engine"], name: string): string {
     : `"${name.replace(/"/g, '""')}"`;
 }
 
+// Qualifies a table for the preview/History SQL strings so they match what the backend runs:
+// `"schema"."table"` for Postgres, bare quoted name otherwise. Mirrors the Rust `qualified_table`.
+function qualifiedIdent(
+  engine: ConnectionConfig["engine"],
+  schema: string | null,
+  table: string,
+): string {
+  return schema
+    ? `${quoteIdent(engine, schema)}.${quoteIdent(engine, table)}`
+    : quoteIdent(engine, table);
+}
+
 function quoteLiteral(value: Cell): string {
   return value === null ? "NULL" : `'${value.replace(/'/g, "''")}'`;
 }
 
 function previewSql(
   engine: ConnectionConfig["engine"],
+  schema: string | null,
   table: string,
   column: string,
   newValue: Cell,
   pkColumn: string,
   pkValue: Cell,
 ): string {
-  return `UPDATE ${quoteIdent(engine, table)} SET ${quoteIdent(engine, column)} = ${quoteLiteral(newValue)} WHERE ${quoteIdent(engine, pkColumn)} = ${quoteLiteral(pkValue)}`;
+  return `UPDATE ${qualifiedIdent(engine, schema, table)} SET ${quoteIdent(engine, column)} = ${quoteLiteral(newValue)} WHERE ${quoteIdent(engine, pkColumn)} = ${quoteLiteral(pkValue)}`;
 }
 
 function previewInsertSql(
   engine: ConnectionConfig["engine"],
+  schema: string | null,
   table: string,
   values: Record<string, Cell>,
 ): string {
@@ -79,22 +93,24 @@ function previewInsertSql(
   const cells = entries
     .map(([, value]) => quoteLiteral(value))
     .join(", ");
-  return `INSERT INTO ${quoteIdent(engine, table)} (${columns}) VALUES (${cells})`;
+  return `INSERT INTO ${qualifiedIdent(engine, schema, table)} (${columns}) VALUES (${cells})`;
 }
 
 function previewDeleteSql(
   engine: ConnectionConfig["engine"],
+  schema: string | null,
   table: string,
   pkColumn: string,
   pkValue: Cell,
 ): string {
-  return `DELETE FROM ${quoteIdent(engine, table)} WHERE ${quoteIdent(engine, pkColumn)} = ${quoteLiteral(pkValue)}`;
+  return `DELETE FROM ${qualifiedIdent(engine, schema, table)} WHERE ${quoteIdent(engine, pkColumn)} = ${quoteLiteral(pkValue)}`;
 }
 
 const ROW_LIMIT = 200;
 
 function fetchSql(
   engine: ConnectionConfig["engine"],
+  schema: string | null,
   table: string,
   filter: string | undefined,
   sort: Sort | null,
@@ -104,7 +120,7 @@ function fetchSql(
   const order = sort
     ? ` ORDER BY ${quoteIdent(engine, sort.column)}${sort.descending ? " DESC" : ""}`
     : "";
-  return `SELECT * FROM ${quoteIdent(engine, table)}${where}${order} LIMIT ${limit}`;
+  return `SELECT * FROM ${qualifiedIdent(engine, schema, table)}${where}${order} LIMIT ${limit}`;
 }
 
 function errorMessage(error: unknown): string {
@@ -251,12 +267,14 @@ function LiveTable({
   connectionId,
   tableId,
   tableName,
+  schema,
   filter,
 }: {
   config: ConnectionConfig;
   connectionId: string;
   tableId: string;
   tableName: string;
+  schema: string | null;
   filter: string | undefined;
 }) {
   const queryClient = useQueryClient();
@@ -285,6 +303,7 @@ function LiveTable({
     queryKey: ["table-rows", tableId, filter ?? "", sortKey, pageSize],
     queryFn: ({ pageParam }) =>
       fetchTable(connectionId, tableName, {
+        schema,
         filter,
         sort,
         limit: pageSize,
@@ -310,11 +329,11 @@ function LiveTable({
   // only on the filter - sort and paging don't change how many rows match.
   const { data: totalRows } = useQuery<number, Error>({
     queryKey: ["table-count", tableId, filter ?? ""],
-    queryFn: () => countTable(connectionId, tableName, filter),
+    queryFn: () => countTable(connectionId, tableName, filter, schema),
     staleTime: Infinity,
   });
 
-  const sql = fetchSql(config.engine, tableName, filter, sort, pageSize);
+  const sql = fetchSql(config.engine, schema, tableName, filter, sort, pageSize);
   useEffect(() => {
     if (dataUpdatedAt === 0 || !data) {
       return;
@@ -470,7 +489,7 @@ function LiveTable({
         upsertPendingEdit({
           ...insert,
           values,
-          sql: previewInsertSql(config.engine, tableName, values),
+          sql: previewInsertSql(config.engine, schema, tableName, values),
         });
         return;
       }
@@ -494,6 +513,7 @@ function LiveTable({
         newValue: value,
         sql: previewSql(
           config.engine,
+          schema,
           tableName,
           column,
           value,
@@ -509,6 +529,7 @@ function LiveTable({
       rows,
       tableId,
       tableName,
+      schema,
       primaryKey,
       pkIndex,
       config.engine,
@@ -526,9 +547,9 @@ function LiveTable({
       tableId,
       tableName,
       values: {},
-      sql: previewInsertSql(config.engine, tableName, {}),
+      sql: previewInsertSql(config.engine, schema, tableName, {}),
     });
-  }, [tableId, tableName, config.engine, upsertPendingEdit]);
+  }, [tableId, tableName, schema, config.engine, upsertPendingEdit]);
 
   const cloneRow = useCallback(
     (rowIndex: number) => {
@@ -551,10 +572,10 @@ function LiveTable({
         tableId,
         tableName,
         values,
-        sql: previewInsertSql(config.engine, tableName, values),
+        sql: previewInsertSql(config.engine, schema, tableName, values),
       });
     },
-    [rows, columnNames, primaryKey, tableId, tableName, config.engine, upsertPendingEdit],
+    [rows, columnNames, primaryKey, tableId, tableName, schema, config.engine, upsertPendingEdit],
   );
 
   const deleteRow = useCallback(
@@ -577,7 +598,7 @@ function LiveTable({
         tableName,
         pkColumn: primaryKey,
         pkValue,
-        sql: previewDeleteSql(config.engine, tableName, primaryKey, pkValue),
+        sql: previewDeleteSql(config.engine, schema, tableName, primaryKey, pkValue),
       });
     },
     [
@@ -587,6 +608,7 @@ function LiveTable({
       tableEdits,
       tableId,
       tableName,
+      schema,
       config.engine,
       discardPendingEdit,
       upsertPendingEdit,
@@ -642,7 +664,7 @@ function LiveTable({
       .map((edit) => ({ id: edit.id, sql: edit.sql }));
     setIsSaving(true);
     const result = await toResult(
-      applyRowMutations(connectionId, tableName, payload),
+      applyRowMutations(connectionId, tableName, payload, schema),
     );
     setIsSaving(false);
     if (!result.ok) {
@@ -877,6 +899,7 @@ export function TableCard() {
             connectionId={databaseId}
             tableId={activeNode.id}
             tableName={activeNode.name}
+            schema={activeNode.schema}
             filter={filter}
           />
         ) : (

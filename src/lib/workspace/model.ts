@@ -40,7 +40,17 @@ export type Sort = {
 
 export type SchemaColumn = { name: string; dataType: string };
 
-export type TableSchema = { name: string; columns: SchemaColumn[] };
+// `schema` is the owning Postgres schema (so autocomplete disambiguates same-named tables across
+// schemas); null for MySQL/SQLite, which have no schema level.
+export type TableSchema = {
+  schema: string | null;
+  name: string;
+  columns: SchemaColumn[];
+};
+
+// A table as returned by the catalog on connect. Postgres carries its owning schema; MySQL/SQLite
+// have no schema level (`schema: null`).
+export type TableRef = { schema: string | null; name: string };
 
 export type ResultColumn = { name: string; type: string };
 
@@ -59,6 +69,9 @@ export type TableNode = {
   kind: "table";
   id: string;
   name: string;
+  // The owning Postgres schema, carried so every table command can address the table as
+  // (schema, table); null for MySQL/SQLite (no schema level). The sidebar groups by this.
+  schema: string | null;
   columns: ResultColumn[];
   rows: Record<string, string>[];
 };

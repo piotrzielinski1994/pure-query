@@ -5,7 +5,7 @@ use db::{
     apply_row_mutations, cancel_query as cancel_query_db, connect_database as connect_database_db,
     count_table_rows, disconnect_database as disconnect_database_db,
     fetch_schema as fetch_schema_db, fetch_table_rows, run_query, ConnectionConfig, QueryOutcome,
-    RowMutation, Sort, TableRows, TableSchema, DEFAULT_ROW_LIMIT,
+    RowMutation, Sort, TableRef, TableRows, TableSchema, DEFAULT_ROW_LIMIT,
 };
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -20,7 +20,7 @@ fn greet(name: &str) -> String {
 async fn connect_database(
     connection_id: String,
     config: ConnectionConfig,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<TableRef>, String> {
     connect_database_db(connection_id, config).await
 }
 
@@ -32,6 +32,7 @@ async fn disconnect_database(connection_id: String) {
 #[tauri::command]
 async fn fetch_table(
     connection_id: String,
+    schema: Option<String>,
     table: String,
     limit: Option<u32>,
     offset: Option<u32>,
@@ -40,6 +41,7 @@ async fn fetch_table(
 ) -> Result<TableRows, String> {
     fetch_table_rows(
         connection_id,
+        schema,
         table,
         limit.unwrap_or(DEFAULT_ROW_LIMIT),
         offset.unwrap_or(0),
@@ -52,19 +54,21 @@ async fn fetch_table(
 #[tauri::command]
 async fn count_table(
     connection_id: String,
+    schema: Option<String>,
     table: String,
     filter: Option<String>,
 ) -> Result<i64, String> {
-    count_table_rows(connection_id, table, filter).await
+    count_table_rows(connection_id, schema, table, filter).await
 }
 
 #[tauri::command]
 async fn apply_mutations(
     connection_id: String,
+    schema: Option<String>,
     table: String,
     mutations: Vec<RowMutation>,
 ) -> Result<u64, String> {
-    apply_row_mutations(connection_id, table, mutations).await
+    apply_row_mutations(connection_id, schema, table, mutations).await
 }
 
 // Runs one or more `;`-separated statements on the held connection, returning one outcome per

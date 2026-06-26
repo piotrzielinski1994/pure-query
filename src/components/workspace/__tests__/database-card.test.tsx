@@ -120,7 +120,7 @@ describe("DatabaseCard", () => {
 describe("DatabaseCard auto-connect", () => {
   // behavior (opening a database view connects it automatically, no manual Connect)
   it("should auto-connect the database when its view is opened", async () => {
-    mockConnect.mockResolvedValue(["product"]);
+    mockConnect.mockResolvedValue([{ schema: null, name: "product" }]);
     renderCard("db-app");
 
     await waitFor(() => {
@@ -137,7 +137,7 @@ describe("DatabaseCard auto-connect", () => {
 
   // behavior (auto-connect fires once, not on every render)
   it("should auto-connect only once for the same database", async () => {
-    mockConnect.mockResolvedValue(["product"]);
+    mockConnect.mockResolvedValue([{ schema: null, name: "product" }]);
     renderCard("db-app");
 
     await waitFor(() => {
@@ -165,7 +165,7 @@ describe("DatabaseCard auto-connect", () => {
       user: "saved_user",
       password: "saved_pw",
     };
-    mockConnect.mockResolvedValue(["restored_table"]);
+    mockConnect.mockResolvedValue([{ schema: null, name: "restored_table" }]);
     renderCard("db-app", [["db-app", saved]]);
 
     await waitFor(() => {
