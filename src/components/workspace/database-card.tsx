@@ -1,16 +1,23 @@
 import { useEffect, useRef } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  PANE_TABS_LIST,
-  PANE_TABS_TRIGGER,
-} from "@/components/workspace/pane-tabs";
+import { cn } from "@/lib/utils";
+import { Tab, TabBar } from "@/components/workspace/tab-bar";
 import { SqlTab } from "@/components/workspace/sql-tab";
 import { ViewsTab } from "@/components/workspace/views-tab";
 import { ScriptTab } from "@/components/workspace/script-tab";
 import { SettingsTab } from "@/components/workspace/settings-tab";
-import { useWorkspace } from "@/components/workspace/workspace-context";
+import {
+  useWorkspace,
+  type DatabaseTab,
+} from "@/components/workspace/workspace-context";
 import { useConnectionActions } from "@/components/workspace/use-connection";
 import { connectionOf } from "@/lib/workspace/model";
+
+const SECTIONS: { id: DatabaseTab; label: string }[] = [
+  { id: "sql", label: "SQL" },
+  { id: "views", label: "Views" },
+  { id: "script", label: "Script" },
+  { id: "settings", label: "Settings" },
+];
 
 export function DatabaseCard() {
   const { activeNode, activeDatabaseTab, setDatabaseTab } = useWorkspace();
@@ -21,45 +28,44 @@ export function DatabaseCard() {
   }
 
   return (
-    <Tabs
-      value={activeDatabaseTab}
-      onValueChange={(value) =>
-        setDatabaseTab(value as typeof activeDatabaseTab)
-      }
-      className="flex h-full flex-col gap-0"
-    >
-      <div className="flex h-9 items-stretch border-b bg-muted/30">
-        <TabsList aria-label="Database sections" className={PANE_TABS_LIST}>
-          <TabsTrigger value="sql" className={PANE_TABS_TRIGGER}>
-            SQL
-          </TabsTrigger>
-          <TabsTrigger value="views" className={PANE_TABS_TRIGGER}>
-            Views
-          </TabsTrigger>
-          <TabsTrigger value="script" className={PANE_TABS_TRIGGER}>
-            Script
-          </TabsTrigger>
-          <TabsTrigger value="settings" className={PANE_TABS_TRIGGER}>
-            Settings
-          </TabsTrigger>
-        </TabsList>
-      </div>
-      <TabsContent
-        value="sql"
-        className="min-h-0 flex-1 data-[state=inactive]:hidden"
+    <div className="flex h-full flex-col">
+      <TabBar ariaLabel="Database sections">
+        {SECTIONS.map((section) => (
+          <Tab
+            key={section.id}
+            isActive={activeDatabaseTab === section.id}
+            onSelect={() => setDatabaseTab(section.id)}
+          >
+            {section.label}
+          </Tab>
+        ))}
+      </TabBar>
+      {/* SQL stays mounted (hidden when inactive) to preserve the CodeMirror editor + results;
+          the other panels mount lazily when selected. */}
+      <div
+        className={cn(
+          "min-h-0 flex-1",
+          activeDatabaseTab !== "sql" && "hidden",
+        )}
       >
         <SqlTab />
-      </TabsContent>
-      <TabsContent value="views" className="min-h-0 flex-1 overflow-auto">
-        <ViewsTab />
-      </TabsContent>
-      <TabsContent value="script" className="min-h-0 flex-1 overflow-auto">
-        <ScriptTab />
-      </TabsContent>
-      <TabsContent value="settings" className="min-h-0 flex-1 overflow-auto">
-        <SettingsTab />
-      </TabsContent>
-    </Tabs>
+      </div>
+      {activeDatabaseTab === "views" ? (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <ViewsTab />
+        </div>
+      ) : null}
+      {activeDatabaseTab === "script" ? (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <ScriptTab />
+        </div>
+      ) : null}
+      {activeDatabaseTab === "settings" ? (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <SettingsTab />
+        </div>
+      ) : null}
+    </div>
   );
 }
 

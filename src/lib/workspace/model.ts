@@ -80,6 +80,9 @@ type DatabaseNodeBase = {
   kind: "database";
   id: string;
   name: string;
+  // Optional per-database accent color (lowercase `#rrggbb` hex) used as a border/orientation cue
+  // across the sidebar row, tabs, and content frame. null = no accent (default border).
+  accentColor: string | null;
   tables: TableNode[];
   views: ViewObject[];
   sql: string;

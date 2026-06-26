@@ -488,8 +488,13 @@ pub fn build_rows_query(
     let order_clause = match sort.filter(|sort| columns.iter().any(|name| name == &sort.column)) {
         Some(sort) => {
             let direction = if sort.descending { " DESC" } else { "" };
+            // Qualify the column with the table. The SELECT casts each column to text
+            // (`"id"::text`) and Postgres preserves the column name through that cast, so a bare
+            // `ORDER BY "id"` would bind to the TEXT output alias and sort lexicographically
+            // (1, 10, 100, 11). The table-qualified form references the original (numeric) column.
             format!(
-                " ORDER BY {}{direction}",
+                " ORDER BY {}.{}{direction}",
+                qualified_table(engine, schema, table),
                 quote_identifier(engine, &sort.column)
             )
         }
@@ -1403,7 +1408,10 @@ fn read_nullable(engine: DbEngine, row: &sqlx::any::AnyRow) -> bool {
 // `kind`; the frontend `PendingMutation` carries extra UI-only fields (id, tableName, sql, ...)
 // that serde ignores here.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+// `rename_all` renames only the variant tags (cell/insert/delete); `rename_all_fields` is what maps
+// the per-variant fields to the camelCase the frontend sends (pkValue/newValue) - without it serde
+// expects snake_case and rejects the payload with "missing field `pk_value`".
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum RowMutation {
     Cell {
         column: String,
@@ -1593,7 +1601,7 @@ mod tests {
         is_subquery_wrappable, nullable_query, parse_json_rows, pk_regclass_bind,
         primary_key_query, qualified_table, quote_identifier, schema_query, split_sql_statements,
         with_pool, wrap_columns_probe, wrap_select_as_json, wrap_select_as_text, ConnectionConfig,
-        DbEngine, Sort, CANCELS, CANCEL_SENTINEL,
+        DbEngine, RowMutation, Sort, CANCELS, CANCEL_SENTINEL,
     };
     use std::collections::HashMap;
 
@@ -2000,6 +2008,33 @@ mod tests {
         );
     }
 
+    // behavior (regression): ORDER BY must reference the table-qualified REAL column, not the bare
+    // identifier. The SELECT casts every column to text (`"id"::text`); Postgres preserves the
+    // column name through that cast, so a bare `ORDER BY "id"` binds to the TEXT output alias and
+    // sorts lexicographically (1, 10, 100, 11, ...). Qualifying with the table forces the original
+    // numeric column.
+    #[test]
+    fn should_order_by_the_table_qualified_column_so_numeric_columns_sort_numerically() {
+        let sort = Sort {
+            column: "id".to_string(),
+            descending: false,
+        };
+        let query = build_rows_query(
+            DbEngine::Postgres,
+            Some("public"),
+            "users",
+            &cols(),
+            200,
+            0,
+            None,
+            Some(&sort),
+        );
+        assert!(
+            query.contains("ORDER BY \"public\".\"users\".\"id\""),
+            "ORDER BY must qualify the real column, got: {query}"
+        );
+    }
+
     // AC-002 - behavior (ORDER BY uses the REAL quoted column, ascending by default, before LIMIT)
     #[test]
     fn should_order_by_the_real_column_ascending_for_postgres() {
@@ -2019,7 +2054,7 @@ mod tests {
         );
         assert_eq!(
             query,
-            "SELECT \"id\"::text, \"price\"::text FROM \"product\" ORDER BY \"price\" LIMIT 200"
+            "SELECT \"id\"::text, \"price\"::text FROM \"product\" ORDER BY \"product\".\"price\" LIMIT 200"
         );
     }
 
@@ -2041,7 +2076,7 @@ mod tests {
             Some(&sort),
         );
         assert!(
-            query.contains("ORDER BY `price` DESC LIMIT 200"),
+            query.contains("ORDER BY `product`.`price` DESC LIMIT 200"),
             "unexpected: {query}"
         );
     }
@@ -2089,7 +2124,7 @@ mod tests {
         assert_eq!(
             query,
             "SELECT \"id\"::text, \"price\"::text FROM \"product\" \
-             WHERE (price > 10) ORDER BY \"id\" DESC LIMIT 200 OFFSET 400"
+             WHERE (price > 10) ORDER BY \"product\".\"id\" DESC LIMIT 200 OFFSET 400"
         );
     }
 
@@ -2520,7 +2555,7 @@ mod tests {
             Some(&sort),
         );
         assert!(
-            query.contains("ORDER BY \"price\" LIMIT 200"),
+            query.contains("ORDER BY \"product\".\"price\" LIMIT 200"),
             "unexpected: {query}"
         );
     }
@@ -2990,5 +3025,37 @@ mod tests {
     async fn should_be_a_no_op_when_cancelling_an_unknown_request_id() {
         cancel_query("never-registered".to_string()).await;
         assert!(!CANCELS.lock().unwrap().contains_key("never-registered"));
+    }
+
+    // behavior (the frontend sends camelCase mutation fields; serde must accept pkValue/newValue)
+    #[test]
+    fn should_deserialize_a_cell_mutation_from_the_camel_case_payload_the_frontend_sends() {
+        let raw = r#"{"kind":"cell","column":"balance","pkValue":"1","newValue":"23"}"#;
+        let mutation: RowMutation =
+            serde_json::from_str(raw).expect("a camelCase cell mutation must deserialize");
+        match mutation {
+            RowMutation::Cell {
+                column,
+                pk_value,
+                new_value,
+            } => {
+                assert_eq!(column, "balance");
+                assert_eq!(pk_value, "1");
+                assert_eq!(new_value, Some("23".to_string()));
+            }
+            other => panic!("expected a Cell mutation, got {other:?}"),
+        }
+    }
+
+    // behavior (a delete mutation also carries pkValue in camelCase)
+    #[test]
+    fn should_deserialize_a_delete_mutation_from_the_camel_case_payload_the_frontend_sends() {
+        let raw = r#"{"kind":"delete","pkValue":"7"}"#;
+        let mutation: RowMutation =
+            serde_json::from_str(raw).expect("a camelCase delete mutation must deserialize");
+        match mutation {
+            RowMutation::Delete { pk_value } => assert_eq!(pk_value, "7"),
+            other => panic!("expected a Delete mutation, got {other:?}"),
+        }
     }
 }

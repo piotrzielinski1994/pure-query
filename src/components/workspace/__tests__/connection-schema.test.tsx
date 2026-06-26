@@ -43,6 +43,7 @@ const schema: TableSchema[] = [
 const tree: TreeNode[] = [
   {
     kind: "database",
+    accentColor: null,
     id: "db-app",
     name: "app",
     engine: "postgres",

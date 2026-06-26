@@ -91,6 +91,107 @@ function Field({
   );
 }
 
+// Accept #rrggbb or #rrggbbaa - the optional alpha pair lets the user dial the border's opacity
+// (e.g. #dc262640 = faint red) instead of a fixed blend.
+const HEX_COLOR = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i;
+
+// Presets carry a 50% alpha (`80`) so the recoloured borders read as a tint by default; the user
+// can still type any #rrggbb(aa) for full control.
+const ACCENT_PRESETS: { label: string; value: string | null }[] = [
+  { label: "None", value: null },
+  { label: "Green", value: "#16a34a80" },
+  { label: "Blue", value: "#2563eb80" },
+  { label: "Red", value: "#dc262680" },
+];
+
+function AccentField({
+  nodeId,
+  accentColor,
+}: {
+  nodeId: string;
+  accentColor: string | null;
+}) {
+  const { setDatabaseAccent } = useWorkspace();
+  const [hex, setHex] = useState(accentColor ?? "");
+
+  // Keep the hex text field in sync when the accent changes from outside this field (a preset
+  // swatch or the native picker); typing into the field drives the accent the other way. Sync
+  // during render (React's "adjust state on prop change" pattern) rather than in an effect, so it
+  // never schedules a cascading post-render re-render.
+  const [prevAccent, setPrevAccent] = useState(accentColor);
+  if (accentColor !== prevAccent) {
+    setPrevAccent(accentColor);
+    setHex(accentColor ?? "");
+  }
+
+  const onHexChange = (value: string) => {
+    setHex(value);
+    if (value.length === 0) {
+      setDatabaseAccent(nodeId, null);
+      return;
+    }
+    if (HEX_COLOR.test(value)) {
+      setDatabaseAccent(nodeId, value.toLowerCase());
+    }
+  };
+
+  return (
+    <Field label="Accent color" htmlFor="conn-accent-hex">
+      <div className="flex items-center gap-2">
+        <div className="flex">
+          {ACCENT_PRESETS.map((preset) => {
+            const isActive = accentColor === preset.value;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                aria-label={preset.label}
+                aria-pressed={isActive}
+                onClick={() => setDatabaseAccent(nodeId, preset.value)}
+                style={preset.value ? { backgroundColor: preset.value } : undefined}
+                className={cn(
+                  "flex size-6 items-center justify-center border border-l-0 border-border text-[10px] first:border-l",
+                  // relative+z so the active swatch's ring draws over its flush neighbours instead
+                  // of being clipped by them on the shared (left/right) edges.
+                  isActive && "relative z-10 ring-1 ring-foreground",
+                  !preset.value && "bg-transparent text-muted-foreground",
+                )}
+              >
+                {preset.value ? null : "/"}
+              </button>
+            );
+          })}
+        </div>
+        <input
+          type="color"
+          aria-label="Accent color picker"
+          // The native picker has no alpha channel; show the RGB part and keep the user's chosen
+          // alpha pair when they nudge the hue.
+          value={accentColor ? accentColor.slice(0, 7) : "#000000"}
+          onChange={(event) =>
+            setDatabaseAccent(
+              nodeId,
+              event.target.value.toLowerCase() +
+                (accentColor && accentColor.length === 9
+                  ? accentColor.slice(7)
+                  : ""),
+            )
+          }
+          className="size-7 cursor-pointer border border-border bg-transparent p-0.5"
+        />
+        <Input
+          id="conn-accent-hex"
+          aria-label="Hex"
+          value={hex}
+          onChange={(event) => onHexChange(event.target.value)}
+          placeholder="#rrggbb(aa)"
+          className="w-32 font-mono"
+        />
+      </div>
+    </Field>
+  );
+}
+
 function PasswordField({
   value,
   onChange,
@@ -160,6 +261,7 @@ function ConnectionForm({ node }: { node: DatabaseNode }) {
           onChange={(event) => renameDatabase(nodeId, event.target.value)}
         />
       </Field>
+      <AccentField nodeId={nodeId} accentColor={node.accentColor} />
       <Field label="Type" htmlFor="conn-engine">
         <Select
           value={form.engine}

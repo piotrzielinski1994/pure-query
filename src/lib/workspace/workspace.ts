@@ -15,6 +15,7 @@ export type PersistedNetworkDatabase = {
   database: string;
   user: string;
   password: string;
+  accentColor?: string;
 };
 
 export type PersistedSqliteDatabase = {
@@ -23,6 +24,7 @@ export type PersistedSqliteDatabase = {
   name: string;
   engine: "sqlite";
   file: string;
+  accentColor?: string;
 };
 
 export type PersistedDatabase =
@@ -68,14 +70,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const HEX_COLOR = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i;
+
+// A persisted accentColor is kept only when it is a `#rrggbb` or `#rrggbbaa` hex string (stored
+// lowercased; the optional alpha pair carries the user's chosen border opacity); anything else
+// (number, named color, 3/5/7-digit hex) is dropped so the database loads uncolored.
+function mergeAccentColor(value: unknown): { accentColor: string } | undefined {
+  if (typeof value !== "string" || !HEX_COLOR.test(value)) {
+    return undefined;
+  }
+  return { accentColor: value.toLowerCase() };
+}
+
 function mergeDatabase(value: Record<string, unknown>): PersistedDatabase | null {
   const { id, name, engine } = value;
   if (typeof id !== "string" || typeof name !== "string") {
     return null;
   }
+  const accent = mergeAccentColor(value.accentColor);
   if (engine === "sqlite") {
     return typeof value.file === "string"
-      ? { kind: "database", id, name, engine: "sqlite", file: value.file }
+      ? { kind: "database", id, name, engine: "sqlite", file: value.file, ...accent }
       : null;
   }
   const { host, port, database, user, password } = value;
@@ -100,6 +115,7 @@ function mergeDatabase(value: Record<string, unknown>): PersistedDatabase | null
     database,
     user,
     password,
+    ...accent,
   };
 }
 
@@ -159,6 +175,7 @@ function hydrateNode(node: PersistedNode): TreeNode {
     kind: "database" as const,
     id: node.id,
     name: node.name,
+    accentColor: node.accentColor ?? null,
     tables: [],
     views: [],
     sql: "",
@@ -198,6 +215,8 @@ function dehydrateNode(node: TreeNode): PersistedNode[] {
       },
     ];
   }
+  const accent =
+    node.accentColor === null ? undefined : { accentColor: node.accentColor };
   if (node.engine === "sqlite") {
     return [
       {
@@ -206,6 +225,7 @@ function dehydrateNode(node: TreeNode): PersistedNode[] {
         name: node.name,
         engine: "sqlite",
         file: node.file,
+        ...accent,
       },
     ];
   }
@@ -220,6 +240,7 @@ function dehydrateNode(node: TreeNode): PersistedNode[] {
       database: node.database,
       user: node.user,
       password: node.password,
+      ...accent,
     },
   ];
 }

@@ -377,6 +377,134 @@ describe("dehydrate", () => {
   });
 });
 
+describe("mergeWorkspace accent color (TC-004, TC-009)", () => {
+  // AC-003, TC-004, E-4 - behavior (a valid lowercase #rrggbb accent survives merge)
+  it("should keep a valid lowercase #rrggbb accentColor on a database", () => {
+    const merged = mergeWorkspace({
+      version: 1,
+      tree: [{ ...validDatabase, accentColor: "#dc2626" }],
+    });
+
+    expect(merged.tree).toEqual([{ ...validDatabase, accentColor: "#dc2626" }]);
+  });
+
+  // AC-003, E-4 - behavior (an uppercase hex is normalised to lowercase on merge)
+  it("should lowercase an uppercase #RRGGBB accentColor", () => {
+    const merged = mergeWorkspace({
+      version: 1,
+      tree: [{ ...validDatabase, accentColor: "#DC2626" }],
+    });
+
+    expect(merged.tree).toEqual([{ ...validDatabase, accentColor: "#dc2626" }]);
+  });
+
+  // AC-003, E-4 - behavior (an 8-digit #rrggbbaa accentColor with alpha is kept for opacity control)
+  it("should keep a valid #rrggbbaa accentColor carrying an alpha pair", () => {
+    const merged = mergeWorkspace({
+      version: 1,
+      tree: [{ ...validDatabase, accentColor: "#dc262640" }],
+    });
+
+    expect(merged.tree).toEqual([
+      { ...validDatabase, accentColor: "#dc262640" },
+    ]);
+  });
+
+  // AC-008, TC-009, E-2 - behavior (a numeric accentColor is dropped, db otherwise intact)
+  it("should drop a numeric accentColor but keep the rest of the database", () => {
+    const merged = mergeWorkspace({
+      version: 1,
+      tree: [{ ...validDatabase, accentColor: 123 }],
+    });
+
+    expect(merged.tree).toEqual([validDatabase]);
+    expect(merged.tree[0]).not.toHaveProperty("accentColor");
+  });
+
+  // AC-008, TC-009, E-2 - behavior (a non-hex colour name is dropped)
+  it('should drop the accentColor "red" but keep the rest of the database', () => {
+    const merged = mergeWorkspace({
+      version: 1,
+      tree: [{ ...validDatabase, accentColor: "red" }],
+    });
+
+    expect(merged.tree).toEqual([validDatabase]);
+    expect(merged.tree[0]).not.toHaveProperty("accentColor");
+  });
+
+  // AC-008, TC-009, E-2 - behavior (a 3-digit shorthand hex is dropped)
+  it('should drop a 3-digit "#abc" accentColor but keep the rest of the database', () => {
+    const merged = mergeWorkspace({
+      version: 1,
+      tree: [{ ...validDatabase, accentColor: "#abc" }],
+    });
+
+    expect(merged.tree).toEqual([validDatabase]);
+    expect(merged.tree[0]).not.toHaveProperty("accentColor");
+  });
+
+  // AC-008, TC-009, E-2 - behavior (a 5-digit hex is dropped)
+  it('should drop a 5-digit "#12345" accentColor but keep the rest of the database', () => {
+    const merged = mergeWorkspace({
+      version: 1,
+      tree: [{ ...validDatabase, accentColor: "#12345" }],
+    });
+
+    expect(merged.tree).toEqual([validDatabase]);
+    expect(merged.tree[0]).not.toHaveProperty("accentColor");
+  });
+
+  // AC-008, TC-009, E-2 - behavior (a 7-digit hex is dropped)
+  it('should drop a 7-digit "#1234567" accentColor but keep the rest of the database', () => {
+    const merged = mergeWorkspace({
+      version: 1,
+      tree: [{ ...validDatabase, accentColor: "#1234567" }],
+    });
+
+    expect(merged.tree).toEqual([validDatabase]);
+    expect(merged.tree[0]).not.toHaveProperty("accentColor");
+  });
+});
+
+describe("hydrate accent color (TC-004)", () => {
+  // AC-003, E-1 - behavior (a persisted db with no accentColor hydrates to null)
+  it("should hydrate a database with no accentColor to a null runtime accentColor", () => {
+    const [node] = hydrate([validDatabase]);
+    const db = node as DatabaseNode;
+
+    expect(db.accentColor).toBeNull();
+  });
+
+  // AC-003, E-7 - behavior (a persisted accentColor hydrates to that hex on the runtime node)
+  it("should hydrate a database with a persisted accentColor to that hex", () => {
+    const [node] = hydrate([
+      { ...validDatabase, accentColor: "#2563eb" } as PersistedDatabase,
+    ]);
+    const db = node as DatabaseNode;
+
+    expect(db.accentColor).toBe("#2563eb");
+  });
+});
+
+describe("dehydrate accent color (TC-004, E-7)", () => {
+  // AC-003, E-3 - behavior (a null accentColor is omitted from the persisted form)
+  it("should omit accentColor from a dehydrated database whose accent is null", () => {
+    const [persisted] = dehydrate(hydrate([validDatabase])).tree;
+
+    expect(persisted).not.toHaveProperty("accentColor");
+  });
+
+  // AC-003, TC-004, E-7 - behavior (a set accent round-trips through hydrate -> dehydrate)
+  it("should preserve a set accentColor through a hydrate/dehydrate round trip", () => {
+    const persisted: PersistedWorkspace = {
+      version: 1,
+      tree: [{ ...validDatabase, accentColor: "#16a34a" } as PersistedDatabase],
+    };
+
+    expect(dehydrate(hydrate(persisted.tree))).toEqual(persisted);
+  });
+});
+
 describe("SQLite persistence (TC-010)", () => {
   // TC-010, AC-008 - behavior (a valid sqlite database is kept with its file path)
   it("should keep a valid sqlite database node carrying its file path", () => {
