@@ -54,6 +54,7 @@ const config: ConnectionConfig = {
 const connectedTree: TreeNode[] = [
   {
     kind: "database",
+    accentColor: null,
     id: "db-ppp",
     name: "ppp",
     engine: "postgres",

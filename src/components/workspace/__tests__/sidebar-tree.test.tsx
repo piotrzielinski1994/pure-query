@@ -399,6 +399,41 @@ describe("SidebarTree", () => {
   });
 });
 
+describe("SidebarTree accent left bar (TC-005)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // The colored row's left bar is an inline inset box-shadow on the row element (it does not widen
+  // the box, so the label never shifts); find the nearest element carrying one.
+  function leftBarColor(treeitem: HTMLElement): string {
+    let element: HTMLElement | null = treeitem;
+    while (element) {
+      if (element.style.boxShadow) {
+        return element.style.boxShadow;
+      }
+      element = element.parentElement;
+    }
+    return "";
+  }
+
+  // AC-004, TC-005 - behavior (a colored database row carries an inline accent left bar)
+  it("should render an accent left bar on a colored database row", () => {
+    renderTree({ expanded: ["folder-staging"] });
+
+    const adminRow = screen.getByRole("treeitem", { name: "admin_db" });
+    expect(leftBarColor(adminRow)).not.toBe("");
+  });
+
+  // AC-004, TC-005, E-3 - behavior (an uncolored database row has no accent left bar)
+  it("should not render an accent left bar on an uncolored database row", () => {
+    renderTree({ expanded: ["folder-staging"] });
+
+    const scratchRow = screen.getByRole("treeitem", { name: "scratch_db" });
+    expect(leftBarColor(scratchRow)).toBe("");
+  });
+});
+
 describe("SidebarTree connection status dot", () => {
   beforeEach(() => {
     vi.clearAllMocks();

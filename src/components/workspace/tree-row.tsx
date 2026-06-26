@@ -147,7 +147,14 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
             aria-label={node.name}
             tabIndex={0}
             onClick={() => openNode(node.id)}
-            style={{ paddingLeft: `${depth * 14 + 6}px` }}
+            style={{
+              paddingLeft: `${depth * 14 + 6}px`,
+              // Paint the accent bar as an inset shadow, not a border, so it sits on the row's left
+              // edge without widening the box or shifting the label right.
+              ...(node.accentColor
+                ? { boxShadow: `inset 2px 0 0 0 ${node.accentColor}` }
+                : {}),
+            }}
             className={cn(
               "flex cursor-pointer items-center gap-1 py-1 pr-2 text-[13px] hover:bg-accent",
               isSelected && "bg-accent",

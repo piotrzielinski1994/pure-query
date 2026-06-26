@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -16,6 +16,7 @@ export function WorkspaceLayout() {
   const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
   const {
     activeNode,
+    activeTabId,
     activeDatabaseTab,
     toggleSplitOrientation,
     isSidebarVisible,
@@ -24,9 +25,15 @@ export function WorkspaceLayout() {
     addDatabase,
     layouts,
     saveLayout,
+    accentColorFor,
   } = useWorkspace();
   const isSplitView =
     activeNode?.kind === "database" && activeDatabaseTab === "sql";
+  // The accent recolours the existing 1px borders by overriding the --border token (every divider/
+  // input/grid border resolves from it). The hex is used verbatim, so the user controls how loud
+  // the borders are via the hex's own alpha pair (#rrggbbaa). Only --border is overridden; --input
+  // is left alone so input backgrounds (which also read --input) stay untouched.
+  const accentBorder = activeTabId ? accentColorFor(activeTabId) : null;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -83,6 +90,11 @@ export function WorkspaceLayout() {
         className="h-full w-full"
         defaultLayout={layouts.workspace}
         onLayoutChanged={(layout) => saveLayout("workspace", layout)}
+        style={
+          accentBorder
+            ? ({ "--border": accentBorder } as CSSProperties)
+            : undefined
+        }
       >
         {isSidebarVisible
           ? [

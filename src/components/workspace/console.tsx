@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tab, TabBar } from "@/components/workspace/tab-bar";
 import { useWorkspace } from "@/components/workspace/workspace-context";
 
 type ConsoleTab = "log" | "changes" | "history";
@@ -55,41 +56,42 @@ export function Console() {
       aria-label="Console"
       className="flex h-full min-h-0 flex-col overflow-hidden bg-muted/30 font-mono text-xs"
     >
-      <div
-        role="tablist"
-        aria-label="Console panels"
-        className="flex shrink-0 items-stretch border-b"
+      <TabBar
+        ariaLabel="Console panels"
+        trailing={
+          clearTarget(tab, history.length, pendingCount) ? (
+            <button
+              type="button"
+              onClick={tab === "history" ? clearHistory : discardAllPendingEdits}
+              className="ml-auto px-3 py-1.5 tracking-wide text-muted-foreground uppercase hover:text-foreground"
+            >
+              Clear
+            </button>
+          ) : null
+        }
       >
-        <ConsoleTabButton
+        <Tab
           isActive={tab === "history"}
-          onClick={() => setTab("history")}
+          onSelect={() => setTab("history")}
+          labelClassName="text-xs tracking-wide"
         >
           History{history.length > 0 ? ` (${history.length})` : ""}
-        </ConsoleTabButton>
-        <ConsoleTabButton
+        </Tab>
+        <Tab
           isActive={tab === "changes"}
-          onClick={() => setTab("changes")}
+          onSelect={() => setTab("changes")}
+          labelClassName="text-xs tracking-wide"
         >
           Changes{pendingCount > 0 ? ` (${pendingCount})` : ""}
-        </ConsoleTabButton>
-        <ConsoleTabButton
+        </Tab>
+        <Tab
           isActive={tab === "log"}
-          onClick={() => setTab("log")}
+          onSelect={() => setTab("log")}
+          labelClassName="text-xs tracking-wide"
         >
           Console
-        </ConsoleTabButton>
-        {clearTarget(tab, history.length, pendingCount) ? (
-          <button
-            type="button"
-            onClick={
-              tab === "history" ? clearHistory : discardAllPendingEdits
-            }
-            className="ml-auto px-3 py-1.5 tracking-wide text-muted-foreground uppercase hover:text-foreground"
-          >
-            Clear
-          </button>
-        ) : null}
-      </div>
+        </Tab>
+      </TabBar>
       {tab === "log" ? (
         <ScrollArea key="log" className="min-h-0 flex-1">
           <ul className="p-2">
@@ -169,32 +171,5 @@ export function Console() {
         </ScrollArea>
       )}
     </section>
-  );
-}
-
-function ConsoleTabButton({
-  isActive,
-  onClick,
-  children,
-}: {
-  isActive: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={isActive}
-      onClick={onClick}
-      className={cn(
-        "border-r px-3 py-1.5 tracking-wide uppercase",
-        isActive
-          ? "bg-background text-foreground"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
   );
 }

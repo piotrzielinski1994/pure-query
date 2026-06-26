@@ -61,8 +61,11 @@ The dev server runs on port 1431 (set in both `vite.config.ts` and `src-tauri/ta
 >
 > The **Settings** sub-tab is live: pick an engine (Postgres / MySQL / SQLite), edit the
 > connection fields (SQLite shows a single "Database file" path field instead of host/port/
-> user/password), and press **Connect** to open a real `sqlx` connection (Rust backend) and
-> replace that database's sidebar tables with the live catalog. Status shows as a toast + a coloured
+> user/password), optionally assign an **accent color** (None / Green / Blue / Red presets, a
+> native picker, or any hex) that recolors the whole shell's existing borders while that database
+> is active, as a prod-vs-test cue (persisted per database in `workspace.json`), and press **Connect** to open
+> a real `sqlx` connection (Rust backend) and replace that database's sidebar tables with the
+> live catalog. Status shows as a toast + a coloured
 > dot on the database row. A database lists its tables only after a successful connect
 > (the live catalog); table leaves are never shown before connecting. A Postgres connection
 > groups its tables under their **schema** rows (`public`, `analytics`, ...); MySQL/SQLite have

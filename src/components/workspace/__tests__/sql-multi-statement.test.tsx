@@ -53,6 +53,7 @@ const CONNECTION_ID = "db-ppp";
 const tree: TreeNode[] = [
   {
     kind: "database",
+    accentColor: null,
     id: CONNECTION_ID,
     name: "ppp",
     engine: "postgres",

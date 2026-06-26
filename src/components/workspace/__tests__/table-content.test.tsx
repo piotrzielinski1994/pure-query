@@ -49,6 +49,7 @@ const connectedTree: TreeNode[] = [
     kind: "database",
     id: "db-ppp",
     name: "ppp",
+    accentColor: null,
     engine: "postgres",
     host: "localhost",
     port: 5432,
@@ -240,9 +241,12 @@ describe("TableCard live content", () => {
     mockFetch.mockRejectedValueOnce(new Error("relation does not exist"));
     renderLive();
 
+    // The message now appears twice (the error pane AND the console history, since a failed fetch
+    // is a real query that gets logged); assert on the destructive error pane specifically.
+    const messages = await screen.findAllByText(/relation does not exist/i);
     expect(
-      await screen.findByText(/relation does not exist/i),
-    ).toBeInTheDocument();
+      messages.some((node) => node.classList.contains("text-destructive")),
+    ).toBe(true);
   });
 
   // behavior (calls the backend with the stored config, table name, and no filter)
@@ -316,6 +320,28 @@ describe("TableCard live content", () => {
 
     const history = screen.getByRole("list", { name: /query history/i });
     expect(history).toHaveTextContent(`SELECT * FROM "product" LIMIT 200`);
+  });
+
+  // behavior (Load more pages with OFFSET, so its logged SQL must carry the OFFSET - not read as
+  // the same LIMIT 200 query as the first page)
+  it("should log the next page fetch to History with its OFFSET", async () => {
+    const user = userEvent.setup();
+    const fullPage = Array.from({ length: 200 }, (_, index) => [
+      String(index + 1),
+    ]);
+    mockFetch.mockResolvedValueOnce(rowsResult(["id"], fullPage));
+    mockFetch.mockResolvedValueOnce(rowsResult(["id"], [["201"]]));
+    renderLive();
+
+    await screen.findByText("1");
+    await user.click(await screen.findByRole("button", { name: /load more/i }));
+    await screen.findByText("201");
+
+    await user.click(screen.getByRole("tab", { name: /history/i }));
+    const history = screen.getByRole("list", { name: /query history/i });
+    expect(history).toHaveTextContent(
+      `SELECT * FROM "product" LIMIT 200 OFFSET 200`,
+    );
   });
 
   // behavior (applying a filter logs the WHERE'd SELECT to History)
@@ -1044,6 +1070,7 @@ describe("TableCard schema-qualified addressing", () => {
       kind: "database",
       id: "db-ppp",
       name: "ppp",
+      accentColor: null,
       engine: "postgres",
       host: "localhost",
       port: 5432,

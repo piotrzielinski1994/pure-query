@@ -103,6 +103,8 @@ type WorkspaceContextValue = {
   addDatabase: () => void;
   addFolder: (name: string) => void;
   renameDatabase: (id: string, name: string) => void;
+  setDatabaseAccent: (id: string, color: string | null) => void;
+  accentColorFor: (id: string) => string | null;
   removeNode: (id: string) => void;
   setConnectionStatus: (id: string, status: ConnectionStatus) => void;
   setConnection: (id: string, config: ConnectionConfig) => void;
@@ -191,12 +193,23 @@ function applyDatabaseConfig(
       };
     }
     if (node.kind === "database" && node.id === databaseId) {
-      const { kind, id, name, tables, views, sql, savedScripts, script, result } =
-        node;
+      const {
+        kind,
+        id,
+        name,
+        accentColor,
+        tables,
+        views,
+        sql,
+        savedScripts,
+        script,
+        result,
+      } = node;
       return {
         kind,
         id,
         name,
+        accentColor,
         tables,
         views,
         sql,
@@ -215,6 +228,7 @@ function newDatabaseNode(id: string): DatabaseNode {
     kind: "database",
     id,
     name: "new_database",
+    accentColor: null,
     engine: "postgres",
     host: "localhost",
     port: 5432,
@@ -287,6 +301,25 @@ function renameNode(
     }
     if (node.kind === "database" && node.id === databaseId) {
       return { ...node, name };
+    }
+    return node;
+  });
+}
+
+function setAccentColor(
+  nodes: TreeNode[],
+  databaseId: string,
+  accentColor: string | null,
+): TreeNode[] {
+  return nodes.map((node) => {
+    if (node.kind === "folder") {
+      return {
+        ...node,
+        children: setAccentColor(node.children, databaseId, accentColor),
+      };
+    }
+    if (node.kind === "database" && node.id === databaseId) {
+      return { ...node, accentColor };
     }
     return node;
   });
@@ -475,6 +508,20 @@ export function WorkspaceProvider({
         ]),
       renameDatabase: (id, name) =>
         setTree((current) => renameNode(current, id, name)),
+      setDatabaseAccent: (id, color) =>
+        setTree((current) => setAccentColor(current, id, color)),
+      accentColorFor: (id) => {
+        const node = nodesById.get(id);
+        if (!node) {
+          return null;
+        }
+        if (node.kind === "database") {
+          return node.accentColor;
+        }
+        const databaseId = databaseIdByTableId.get(id);
+        const database = databaseId ? nodesById.get(databaseId) : undefined;
+        return database?.kind === "database" ? database.accentColor : null;
+      },
       removeNode: (id) => {
         const node = findNode(tree, id);
         const removedDbIds = node ? databaseIdsIn(node) : [id];

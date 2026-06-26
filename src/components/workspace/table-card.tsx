@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -115,12 +115,16 @@ function fetchSql(
   filter: string | undefined,
   sort: Sort | null,
   limit: number,
+  offset: number,
 ): string {
   const where = filter ? ` WHERE (${filter})` : "";
   const order = sort
     ? ` ORDER BY ${quoteIdent(engine, sort.column)}${sort.descending ? " DESC" : ""}`
     : "";
-  return `SELECT * FROM ${qualifiedIdent(engine, schema, table)}${where}${order} LIMIT ${limit}`;
+  // "Load more" pages with OFFSET, so the logged SQL must carry it - otherwise every page reads as
+  // the same `LIMIT 200` query even though the backend skips the rows already fetched.
+  const offsetClause = offset > 0 ? ` OFFSET ${offset}` : "";
+  return `SELECT * FROM ${qualifiedIdent(engine, schema, table)}${where}${order} LIMIT ${limit}${offsetClause}`;
 }
 
 function errorMessage(error: unknown): string {
@@ -290,25 +294,52 @@ function LiveTable({
   const [pageSize, setPageSize] = useState(ROW_LIMIT);
 
   const sortKey = sort ? `${sort.column}:${sort.descending}` : "";
+  // Monotonic sequence so every physical fetch logs a distinct history entry (the dedup in
+  // addHistoryEntry keys on id; a timestamp could collide and a static key would be deduped).
+  const fetchSeq = useRef(0);
   const {
     data,
     error,
     isPending,
-    dataUpdatedAt,
-    errorUpdatedAt,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
   } = useInfiniteQuery<TableRows, Error>({
     queryKey: ["table-rows", tableId, filter ?? "", sortKey, pageSize],
-    queryFn: ({ pageParam }) =>
-      fetchTable(connectionId, tableName, {
-        schema,
-        filter,
-        sort,
-        limit: pageSize,
-        offset: pageParam as number,
-      }),
+    // Log here, where the physical round-trip happens, so EVERY query that hits the database is
+    // recorded - a new sort/filter (new key), the next page, a Save-triggered refetch. A cache hit
+    // (revisiting the tab) never calls queryFn, so it correctly logs nothing.
+    queryFn: async ({ pageParam }) => {
+      const offset = pageParam as number;
+      const querySql = fetchSql(config.engine, schema, tableName, filter, sort, pageSize, offset);
+      const seq = (fetchSeq.current += 1);
+      try {
+        const page = await fetchTable(connectionId, tableName, {
+          schema,
+          filter,
+          sort,
+          limit: pageSize,
+          offset,
+        });
+        addHistoryEntry({
+          id: `fetch-${tableId}-${seq}`,
+          sql: querySql,
+          status: "success",
+          message: `SELECT ${page.rows.length}`,
+          at: new Date().toLocaleTimeString(),
+        });
+        return page;
+      } catch (error) {
+        addHistoryEntry({
+          id: `fetch-err-${tableId}-${seq}`,
+          sql: querySql,
+          status: "error",
+          message: errorMessage(error),
+          at: new Date().toLocaleTimeString(),
+        });
+        throw error;
+      }
+    },
     initialPageParam: 0,
     // A full page (= the chosen page size) means there may be more; a short page is the last.
     getNextPageParam: (lastPage, pages) =>
@@ -333,35 +364,6 @@ function LiveTable({
     staleTime: Infinity,
   });
 
-  const sql = fetchSql(config.engine, schema, tableName, filter, sort, pageSize);
-  useEffect(() => {
-    if (dataUpdatedAt === 0 || !data) {
-      return;
-    }
-    const total = data.pages.reduce((sum, page) => sum + page.rows.length, 0);
-    addHistoryEntry({
-      id: `fetch-${tableId}-${filter ?? ""}-${sortKey}-${dataUpdatedAt}`,
-      sql,
-      status: "success",
-      message: `SELECT ${total}`,
-      at: new Date().toLocaleTimeString(),
-    });
-    // addHistoryEntry/sql are stable enough; log once per fetch settle.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataUpdatedAt]);
-  useEffect(() => {
-    if (errorUpdatedAt === 0 || !error) {
-      return;
-    }
-    addHistoryEntry({
-      id: `fetch-err-${tableId}-${filter ?? ""}-${sortKey}-${errorUpdatedAt}`,
-      sql,
-      status: "error",
-      message: errorMessage(error),
-      at: new Date().toLocaleTimeString(),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [errorUpdatedAt]);
 
   const cycleSort = useCallback(
     (column: string) =>

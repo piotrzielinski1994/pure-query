@@ -426,6 +426,7 @@ function sqliteNode(file: string): DatabaseNode {
     kind: "database",
     id: "db-local",
     name: "my_local_db",
+    accentColor: null,
     engine: "sqlite",
     file,
     tables: [],
@@ -527,6 +528,97 @@ describe("SettingsTab SQLite engine", () => {
         engine: "sqlite",
         file: "/Users/me/data/app.sqlite",
       }),
+    );
+  });
+});
+
+describe("SettingsTab accent color (TC-001, TC-002, TC-003)", () => {
+  // scratch_db starts uncolored (accentColor null); admin_db starts red (#dc2626).
+  function renderAccent(activeTabId: string) {
+    return render(
+      <WorkspaceProvider tree={fixtureTree} initialActiveTabId={activeTabId}>
+        <SettingsTab />
+      </WorkspaceProvider>,
+    );
+  }
+
+  // AC-001 - behavior (the accent preset swatches are present)
+  it("should render None / Green / Blue / Red accent swatch buttons", () => {
+    renderAccent("db-scratch");
+    expect(screen.getByRole("button", { name: /^none$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^green$/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^blue$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^red$/i })).toBeInTheDocument();
+  });
+
+  // AC-001 - behavior (the native color input + hex text field are present)
+  it("should render a native color input and a hex text field", () => {
+    const { container } = renderAccent("db-scratch");
+    expect(
+      container.querySelector('input[type="color"]'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: /hex/i }),
+    ).toBeInTheDocument();
+  });
+
+  // AC-002, TC-001 - behavior (clicking Red sets the accent; Red becomes pressed, hex shows it)
+  it("should set the accent to red and show the red hex when the Red swatch is clicked", async () => {
+    const user = userEvent.setup();
+    renderAccent("db-scratch");
+
+    expect(screen.getByRole("button", { name: /^red$/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    await user.click(screen.getByRole("button", { name: /^red$/i }));
+
+    expect(screen.getByRole("button", { name: /^red$/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("textbox", { name: /hex/i })).toHaveValue(
+      "#dc262680",
+    );
+  });
+
+  // AC-002, TC-002 - behavior (an already-red database -> click None -> accent cleared)
+  it("should clear the accent when None is clicked on an already-red database", async () => {
+    const user = userEvent.setup();
+    renderAccent("db-admin");
+
+    // admin_db is seeded red.
+    expect(screen.getByRole("button", { name: /^red$/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(screen.getByRole("button", { name: /^none$/i }));
+
+    expect(screen.getByRole("button", { name: /^red$/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: /^none$/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  // AC-001, AC-002, TC-003 - behavior (typing a custom hex reflects in the control)
+  it("should reflect a custom hex typed into the hex field", async () => {
+    const user = userEvent.setup();
+    renderAccent("db-scratch");
+
+    const hex = screen.getByRole("textbox", { name: /hex/i });
+    await user.clear(hex);
+    await user.type(hex, "#0ea5e9");
+
+    expect(screen.getByRole("textbox", { name: /hex/i })).toHaveValue(
+      "#0ea5e9",
     );
   });
 });
