@@ -53,7 +53,14 @@ const tree: TreeNode[] = [
     user: "postgres",
     password: "postgres",
     tables: [
-      { kind: "table", id: "db-ppp::product", name: "product", columns: [], rows: [] },
+      {
+        kind: "table",
+        id: "db-ppp::product",
+        name: "product",
+        schema: null,
+        columns: [],
+        rows: [],
+      },
     ],
     views: [],
     sql: "SELECT 1",

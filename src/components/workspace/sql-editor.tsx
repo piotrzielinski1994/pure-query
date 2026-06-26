@@ -62,28 +62,117 @@ function keywordSource(context: CompletionContext) {
   return completeKeywords(context);
 }
 
+// Tables referenced by a FROM/JOIN/UPDATE/INTO clause in the buffer, as written (`orders`,
+// `public.orders`). lang-sql only completes columns AFTER a `table.` qualifier; this lets us also
+// offer the in-scope tables' columns for a BARE identifier (e.g. `WHERE id` -> `id`).
+function referencedTables(sql: string): string[] {
+  const matches = sql.matchAll(
+    /\b(?:from|join|update|into)\s+("[^"]+"|`[^`]+`|[\w$]+(?:\.(?:"[^"]+"|`[^`]+`|[\w$]+))?)/gi,
+  );
+  const unquote = (part: string) => part.replace(/^["`]|["`]$/g, "");
+  return [...matches].map((match) =>
+    match[1].split(".").map(unquote).join("."),
+  );
+}
+
+// Columns of every table the current statement pulls FROM, offered for a bare identifier. A
+// reference resolves by qualified `schema.table` first, else by bare table name (any schema). Off
+// in a qualified context (`table.` is lang-sql's job) and when nothing is in scope.
+function columnsInScopeSource(schema: TableSchema[]): CompletionSource {
+  return (context) => {
+    if (context.matchBefore(/\.\w*$/)) {
+      return null;
+    }
+    const word = context.matchBefore(/[\w$]+/);
+    if (!word && !context.explicit) {
+      return null;
+    }
+    const refs = referencedTables(context.state.doc.toString());
+    if (refs.length === 0) {
+      return null;
+    }
+    const seen = new Set<string>();
+    const options = refs
+      .flatMap((ref) => {
+        const [maybeSchema, maybeTable] = ref.split(".");
+        const table = maybeTable
+          ? schema.find((t) => t.schema === maybeSchema && t.name === maybeTable)
+          : schema.find((t) => t.name === ref);
+        return table?.columns ?? [];
+      })
+      .filter((column) => !seen.has(column.name) && seen.add(column.name))
+      .map((column) => ({ label: column.name, type: "property" }));
+    if (options.length === 0) {
+      return null;
+    }
+    return {
+      from: word ? word.from : context.pos,
+      options,
+      validFor: /^[\w$]*$/,
+    };
+  };
+}
+
+// The shape lang-sql's `schemaCompletionSource` consumes: a flat map (table -> columns) for
+// engines with no schema level, or a nested map (schema -> table -> columns) for Postgres so
+// qualified `schema.table` completion works and same-named tables across schemas don't collide.
+type SqlNamespace = Record<string, string[] | Record<string, string[]>>;
+
 // Builds SQL language support whose ONLY completions are schema tables/columns + curated keywords -
 // nothing from the dialect's full keyword dump. When `defaultTable` is set (the filter row, which
 // is a WHERE on ONE table), completion is scoped to that table's columns + keywords - no other
 // table names, which would be irrelevant noise in a single-table filter.
 function buildSqlLanguage(
   engine: DbEngine,
-  schemaMap: Record<string, string[]>,
-  defaultTable: string | undefined,
+  schema: TableSchema[],
+  namespace: SqlNamespace,
+  defaultTableColumns: string[] | undefined,
+  defaultSchema: string | undefined,
 ) {
   const dialect = dialects[engine];
-  const completionSource: CompletionSource = defaultTable
-    ? completeFromList(
-        (schemaMap[defaultTable] ?? []).map((label) => ({
-          label,
-          type: "property",
-        })),
-      )
-    : schemaCompletionSource({ dialect, schema: schemaMap });
+  // The filter row is a WHERE on one table - complete only its columns. The full editor offers
+  // schema/table names (lang-sql) PLUS the columns of whatever tables the statement is FROM-ing
+  // (our source), so a bare `id` after `from orders where` completes without a `orders.` prefix.
+  const autocompletes: CompletionSource[] = defaultTableColumns
+    ? [
+        completeFromList(
+          defaultTableColumns.map((label) => ({ label, type: "property" })),
+        ),
+      ]
+    : [
+        schemaCompletionSource({ dialect, schema: namespace, defaultSchema }),
+        columnsInScopeSource(schema),
+      ];
   return new LanguageSupport(dialect.language, [
-    dialect.language.data.of({ autocomplete: completionSource }),
+    ...autocompletes.map((autocomplete) =>
+      dialect.language.data.of({ autocomplete }),
+    ),
     dialect.language.data.of({ autocomplete: keywordSource }),
   ]);
+}
+
+// Folds the flat per-table schema list into the namespace lang-sql wants. With Postgres schemas
+// present it nests `schema -> table -> columns` (and reports `public` as the default schema so its
+// tables also complete unqualified); without schemas it stays a flat `table -> columns` map.
+function buildNamespace(schema: TableSchema[]): {
+  namespace: SqlNamespace;
+  defaultSchema: string | undefined;
+} {
+  const hasSchemas = schema.some((table) => table.schema !== null);
+  if (!hasSchemas) {
+    return {
+      namespace: Object.fromEntries(
+        schema.map((table) => [table.name, table.columns.map((c) => c.name)]),
+      ),
+      defaultSchema: undefined,
+    };
+  }
+  const nested: Record<string, Record<string, string[]>> = {};
+  for (const table of schema) {
+    const schemaName = table.schema ?? "public";
+    (nested[schemaName] ??= {})[table.name] = table.columns.map((c) => c.name);
+  }
+  return { namespace: nested, defaultSchema: "public" in nested ? "public" : undefined };
 }
 
 // Run the editor's current selection if it holds non-whitespace text, otherwise the whole buffer.
@@ -136,12 +225,24 @@ export function SqlEditor({
   defaultTable,
 }: SqlEditorProps) {
   const extensions = useMemo<Extension[]>(() => {
-    const schemaMap = Object.fromEntries(
-      schema.map((table) => [table.name, table.columns.map((c) => c.name)]),
-    );
+    const { namespace, defaultSchema } = buildNamespace(schema);
+    // The filter row is a WHERE on ONE table: complete only that table's columns. Match by name
+    // (the filter card already targets a single table; schema-qualified collisions don't surface
+    // here since the editor is scoped to that one table's columns).
+    const defaultTableColumns = defaultTable
+      ? (schema.find((table) => table.name === defaultTable)?.columns ?? []).map(
+          (c) => c.name,
+        )
+      : undefined;
     const submitKey = singleLine ? "Enter" : "Mod-Enter";
     return [
-      buildSqlLanguage(engine, schemaMap, defaultTable),
+      buildSqlLanguage(
+        engine,
+        schema,
+        namespace,
+        defaultTableColumns,
+        defaultSchema,
+      ),
       syntaxHighlighting(darculaHighlight),
       syntaxHighlighting(classHighlighter),
       darculaChrome,

@@ -7,7 +7,7 @@ import { WorkspaceProvider } from "@/components/workspace/workspace-context";
 import { SidebarTree } from "@/components/workspace/sidebar-tree";
 import { SettingsTab } from "@/components/workspace/settings-tab";
 import { ContentHeader } from "@/components/workspace/content-header";
-import { connectDatabase } from "@/lib/tauri";
+import { connectDatabase, cancelConnect } from "@/lib/tauri";
 import {
   fixtureTree,
   expandedToAppDb,
@@ -16,6 +16,7 @@ import {
 vi.mock("@/lib/tauri", () => ({
   connectDatabase: vi.fn(),
   fetchSchema: vi.fn(() => Promise.resolve([])),
+  cancelConnect: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -23,6 +24,7 @@ vi.mock("sonner", () => ({
 }));
 
 const mockConnect = vi.mocked(connectDatabase);
+const mockCancelConnect = vi.mocked(cancelConnect);
 
 function renderTree(opts?: {
   expanded?: string[];
@@ -47,6 +49,10 @@ function renderTree(opts?: {
 }
 
 describe("SidebarTree", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   // AC-002 — behavior
   it("should expose a tree landmark named navigator", () => {
     renderTree();
@@ -156,9 +162,13 @@ describe("SidebarTree", () => {
     ).toBeInTheDocument();
   });
 
-  // behavior (tables hidden until connected: app can't know tables before a connect)
-  it("should not reveal table leaves when an expanded database is not connected", async () => {
+  // behavior (the chevron auto-connects an idle database, then reveals its live catalog leaves)
+  it("should connect an idle database and reveal its live table leaves when the chevron is clicked", async () => {
     const user = userEvent.setup();
+    mockConnect.mockResolvedValueOnce([
+      { schema: null, name: "accounts" },
+      { schema: null, name: "audit_log" },
+    ]);
     renderTree({ expanded: ["folder-staging"] });
 
     const dbRow = screen.getByRole("treeitem", { name: "admin_db" });
@@ -166,12 +176,74 @@ describe("SidebarTree", () => {
       within(dbRow).getByRole("button", { name: /toggle .*tables/i }),
     );
 
+    expect(mockConnect).toHaveBeenCalledWith("db-admin", expect.anything());
     expect(
-      screen.queryByRole("treeitem", { name: "accounts" }),
-    ).not.toBeInTheDocument();
+      await screen.findByRole("treeitem", { name: "accounts" }),
+    ).toBeInTheDocument();
     expect(
-      screen.queryByRole("treeitem", { name: "audit_log" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("treeitem", { name: "audit_log" }),
+    ).toBeInTheDocument();
+  });
+
+  // behavior (while a connect is in flight, clicking the chevron again aborts it and collapses)
+  it("should abort an in-flight connect and collapse when the chevron is clicked again", async () => {
+    const user = userEvent.setup();
+    // A connect that never resolves keeps the row in the "connecting" state.
+    mockConnect.mockReturnValueOnce(new Promise(() => {}));
+    renderTree({ expanded: ["folder-staging"] });
+
+    const chevron = () =>
+      within(screen.getByRole("treeitem", { name: "admin_db" })).getByRole(
+        "button",
+        { name: /toggle .*tables/i },
+      );
+
+    await user.click(chevron());
+    // amber "connecting" dot is shown while the connect is pending
+    expect(
+      await screen.findByLabelText(/admin_db connecting/i),
+    ).toBeInTheDocument();
+
+    await user.click(chevron());
+    expect(mockCancelConnect).toHaveBeenCalledWith("db-admin");
+    await waitFor(() => {
+      expect(
+        screen.getByRole("treeitem", { name: "admin_db" }),
+      ).toHaveAttribute("aria-expanded", "false");
+    });
+  });
+
+  // behavior (collapsing an errored database just collapses - it must NOT retry the connect, so no
+  // amber "connecting" dot flashes; the chevron only connects when EXPANDING)
+  it("should collapse without reconnecting when an errored database's chevron is clicked", async () => {
+    const user = userEvent.setup();
+    mockConnect.mockRejectedValueOnce(new Error("nope"));
+    renderTree({ expanded: ["folder-staging"] });
+
+    const chevron = () =>
+      within(screen.getByRole("treeitem", { name: "admin_db" })).getByRole(
+        "button",
+        { name: /toggle .*tables/i },
+      );
+
+    // expand -> connect fails -> red error dot, row stays expanded
+    await user.click(chevron());
+    expect(
+      await screen.findByLabelText(/admin_db error/i),
+    ).toBeInTheDocument();
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+
+    // collapse -> no second connect, no amber connecting dot, and the red error dot clears to idle
+    await user.click(chevron());
+    expect(screen.getByRole("treeitem", { name: "admin_db" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText(/admin_db connecting/i)).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/admin_db error/i)).toBeNull();
+    });
   });
 
   // TC-002, AC-004, E-2 — behavior (chevron reveals tables; no card opens)
@@ -233,11 +305,14 @@ describe("SidebarTree", () => {
       "aria-expanded",
       "false",
     );
+    // an already-connected database just toggles - the chevron must not re-connect.
+    expect(mockConnect).not.toHaveBeenCalled();
   });
 
-  // E-5 — behavior (a database with no tables expands to a childless list, no crash)
+  // E-5 — behavior (connecting a database whose catalog is empty expands to a childless list)
   it("should expand a database with no tables without revealing any table leaf", async () => {
     const user = userEvent.setup();
+    mockConnect.mockResolvedValueOnce([]);
     renderTree();
 
     const dbRow = screen.getByRole("treeitem", { name: "scratch_db" });
@@ -245,9 +320,11 @@ describe("SidebarTree", () => {
       within(dbRow).getByRole("button", { name: /toggle .*tables/i }),
     );
 
-    expect(
-      screen.getByRole("treeitem", { name: "scratch_db" }),
-    ).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => {
+      expect(
+        screen.getByRole("treeitem", { name: "scratch_db" }),
+      ).toHaveAttribute("aria-expanded", "true");
+    });
   });
 
   // AC-005, TC-003 — behavior (clicking the database name opens its card tab + selects it)
@@ -358,7 +435,7 @@ describe("SidebarTree connection status dot", () => {
   // AC-006, TC-001 — behavior (green dot once a connect succeeds)
   it("should show a connected status dot on the database row after a successful connect", async () => {
     const user = userEvent.setup();
-    mockConnect.mockResolvedValueOnce(["a", "b"]);
+    mockConnect.mockResolvedValueOnce([{ schema: null, name: "a" }, { schema: null, name: "b" }]);
     renderWithSettings({
       activeTabId: "db-admin",
       expanded: ["folder-staging"],
@@ -388,5 +465,113 @@ describe("SidebarTree connection status dot", () => {
         screen.queryByLabelText(/admin_db connected/i),
       ).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("SidebarTree Postgres schema labelling (flat)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function renderWithSettings(opts: { activeTabId: string; expanded: string[] }) {
+    return render(
+      <WorkspaceProvider
+        tree={fixtureTree}
+        initialActiveTabId={opts.activeTabId}
+        initialExpandedIds={opts.expanded}
+      >
+        <SidebarTree />
+        <SettingsTab />
+      </WorkspaceProvider>,
+    );
+  }
+
+  // AC-004, TC-001 — behavior (a multi-schema Postgres catalog renders FLAT, schema-qualified table
+  // leaves directly under the database - no intermediate schema row to expand)
+  it("should render schema-qualified flat leaves when the catalog spans multiple schemas", async () => {
+    const user = userEvent.setup();
+    mockConnect.mockResolvedValueOnce([
+      { schema: "public", name: "orders" },
+      { schema: "analytics", name: "events" },
+    ]);
+    renderWithSettings({
+      activeTabId: "db-admin",
+      expanded: ["folder-staging", "db-admin"],
+    });
+
+    await user.click(screen.getByRole("button", { name: /^connect$/i }));
+
+    // no schema row, the qualified leaves appear directly
+    expect(screen.queryByRole("treeitem", { name: "public" })).toBeNull();
+    expect(
+      await screen.findByRole("treeitem", { name: "public.orders" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("treeitem", { name: "analytics.events" }),
+    ).toBeInTheDocument();
+  });
+
+  // AC-009, TC-002 — behavior (two schemas sharing a table name render two distinct qualified leaves)
+  it("should render same-named tables in different schemas as distinct qualified leaves", async () => {
+    const user = userEvent.setup();
+    mockConnect.mockResolvedValueOnce([
+      { schema: "public", name: "users" },
+      { schema: "analytics", name: "users" },
+    ]);
+    renderWithSettings({
+      activeTabId: "db-admin",
+      expanded: ["folder-staging", "db-admin"],
+    });
+
+    await user.click(screen.getByRole("button", { name: /^connect$/i }));
+
+    expect(
+      await screen.findByRole("treeitem", { name: "public.users" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("treeitem", { name: "analytics.users" }),
+    ).toBeInTheDocument();
+  });
+
+  // AC-004 — behavior (a single-schema Postgres catalog shows BARE table names, no qualifier)
+  it("should render bare table names when the catalog has only one schema", async () => {
+    const user = userEvent.setup();
+    mockConnect.mockResolvedValueOnce([
+      { schema: "public", name: "users" },
+      { schema: "public", name: "products" },
+    ]);
+    renderWithSettings({
+      activeTabId: "db-admin",
+      expanded: ["folder-staging", "db-admin"],
+    });
+
+    await user.click(screen.getByRole("button", { name: /^connect$/i }));
+
+    expect(
+      await screen.findByRole("treeitem", { name: "users" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("treeitem", { name: "public.users" })).toBeNull();
+  });
+
+  // AC-005, TC-003 — behavior (a catalog with no schema renders bare table names)
+  it("should render bare table names when the catalog carries no schema", async () => {
+    const user = userEvent.setup();
+    mockConnect.mockResolvedValueOnce([
+      { schema: null, name: "products" },
+      { schema: null, name: "customers" },
+    ]);
+    renderWithSettings({
+      activeTabId: "db-admin",
+      expanded: ["folder-staging", "db-admin"],
+    });
+
+    await user.click(screen.getByRole("button", { name: /^connect$/i }));
+
+    expect(
+      await screen.findByRole("treeitem", { name: "products" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("treeitem", { name: "customers" }),
+    ).toBeInTheDocument();
   });
 });

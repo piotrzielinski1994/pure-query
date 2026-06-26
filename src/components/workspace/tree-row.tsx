@@ -61,9 +61,29 @@ function FolderRow({ node, depth }: { node: FolderNode; depth: number }) {
 }
 
 const STATUS_DOT_COLOR: Partial<Record<ConnectionStatus, string>> = {
+  // Connecting pulses amber so an in-flight connect is visible (and the chevron's abort affordance
+  // has a matching cue); connected/error are steady.
+  connecting: "bg-amber-500 animate-pulse",
   connected: "bg-green-500",
   error: "bg-red-500",
 };
+
+// Whether a connected database spans more than one schema. When it does, every table leaf is shown
+// schema-qualified (`schema.table`) so same-named tables across schemas are distinguishable; a
+// single-schema database (and MySQL/SQLite, which have no schema at all) shows bare table names.
+function isMultiSchema(tables: TableNode[]): boolean {
+  const schemas = new Set(
+    tables.flatMap((table) => (table.schema === null ? [] : [table.schema])),
+  );
+  return schemas.size > 1;
+}
+
+// The sidebar label for a table: schema-qualified only when the database spans multiple schemas.
+function tableLabel(table: TableNode, multiSchema: boolean): string {
+  return multiSchema && table.schema !== null
+    ? `${table.schema}.${table.name}`
+    : table.name;
+}
 
 function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
   const {
@@ -72,9 +92,10 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
     toggleExpand,
     openNode,
     connectionStatus,
+    setConnectionStatus,
     connections,
   } = useWorkspace();
-  const { connect, disconnect } = useConnectionActions();
+  const { connect, disconnect, abortConnect } = useConnectionActions();
   const requestDelete = useRequestDelete();
   const isExpanded = expandedIds.has(node.id);
   const isSelected = activeTabId === node.id;
@@ -82,6 +103,7 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
   const status = connectionStatus.get(node.id) ?? "idle";
   const dotColor = STATUS_DOT_COLOR[status];
   const isConnected = status === "connected";
+  const isConnecting = status === "connecting";
   const hasConnection = connections.has(node.id);
 
   const toggleConnection = () => {
@@ -90,6 +112,28 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
       return;
     }
     connect(node.id, connectionOf(node));
+  };
+
+  // The chevron is first and foremost an expand/collapse toggle - it ALWAYS flips that. On top of
+  // that, connection side effects keyed on the toggle DIRECTION:
+  //  - expanding a database that isn't connected (idle/error) kicks off a connect so the live
+  //    catalog populates instead of showing an empty list (error -> a retry);
+  //  - collapsing while a connect is still in flight ABORTS it;
+  //  - collapsing a database that isn't connected (a pending connect just aborted, or a failed
+  //    one) clears the status back to idle, so the dot disappears - only a live (connected)
+  //    database keeps its green dot when collapsed.
+  const toggleTables = () => {
+    const willExpand = !isExpanded;
+    if (!willExpand && isConnecting) {
+      abortConnect(node.id);
+    }
+    if (!willExpand && !isConnected) {
+      setConnectionStatus(node.id, "idle");
+    }
+    toggleExpand(node.id);
+    if (willExpand && (status === "idle" || status === "error")) {
+      connect(node.id, connectionOf(node));
+    }
   };
 
   return (
@@ -114,7 +158,7 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
               aria-label={`Toggle ${node.name} tables`}
               onClick={(event) => {
                 event.stopPropagation();
-                toggleExpand(node.id);
+                toggleTables();
               }}
               className="flex shrink-0 items-center rounded-sm text-muted-foreground hover:text-foreground"
             >
@@ -145,16 +189,34 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
       </ContextMenu>
       {isExpanded && isConnected ? (
         <ul role="group">
-          {node.tables.map((table) => (
-            <TreeRow key={table.id} node={table} depth={depth + 1} />
-          ))}
+          {(() => {
+            const multiSchema = isMultiSchema(node.tables);
+            return node.tables.map((table) => (
+              <TableRow
+                key={table.id}
+                node={table}
+                depth={depth + 1}
+                label={tableLabel(table, multiSchema)}
+              />
+            ));
+          })()}
         </ul>
       ) : null}
     </li>
   );
 }
 
-function TableRow({ node, depth }: { node: TableNode; depth: number }) {
+// `label` lets the database row pass a schema-qualified name (`schema.table`) for a multi-schema
+// Postgres database; it defaults to the bare table name everywhere else.
+function TableRow({
+  node,
+  depth,
+  label = node.name,
+}: {
+  node: TableNode;
+  depth: number;
+  label?: string;
+}) {
   const { activeTabId, openNode } = useWorkspace();
   const isSelected = activeTabId === node.id;
 
@@ -163,7 +225,7 @@ function TableRow({ node, depth }: { node: TableNode; depth: number }) {
       <div
         role="treeitem"
         aria-selected={isSelected}
-        aria-label={node.name}
+        aria-label={label}
         tabIndex={0}
         onClick={() => openNode(node.id)}
         style={{ paddingLeft: `${depth * 14 + 10}px` }}
@@ -173,7 +235,7 @@ function TableRow({ node, depth }: { node: TableNode; depth: number }) {
         )}
       >
         <Table className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate">{node.name}</span>
+        <span className="truncate">{label}</span>
       </div>
     </li>
   );

@@ -297,13 +297,25 @@ pub fn build_url(config: &ConnectionConfig) -> String {
     )
 }
 
+// A table the catalog lists. Postgres carries the owning schema so the sidebar can group by it and
+// every table command can qualify the name; MySQL/SQLite have no schema level (`schema: None`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableRef {
+    pub schema: Option<String>,
+    pub name: String,
+}
+
+// Postgres selects (schema, table) so each table is qualifiable and groupable; MySQL/SQLite select
+// the bare name only (no schema level). The Postgres ordering is schema-then-table so the grouped
+// sidebar is alphabetical within each schema.
 pub fn catalog_query(engine: DbEngine) -> &'static str {
     match engine {
         DbEngine::Postgres => {
-            "SELECT table_name::text FROM information_schema.tables \
+            "SELECT table_schema::text, table_name::text FROM information_schema.tables \
              WHERE table_type = 'BASE TABLE' \
              AND table_schema NOT IN ('pg_catalog', 'information_schema') \
-             ORDER BY table_name"
+             ORDER BY table_schema, table_name"
         }
         DbEngine::Mysql => {
             "SELECT table_name FROM information_schema.tables \
@@ -315,6 +327,20 @@ pub fn catalog_query(engine: DbEngine) -> &'static str {
              WHERE type = 'table' AND name NOT LIKE 'sqlite_%' \
              ORDER BY name"
         }
+    }
+}
+
+// Qualifies a table for the FROM/UPDATE/INSERT/DELETE target: `"schema"."table"` when a schema is
+// known (Postgres), bare `"table"` otherwise (MySQL/SQLite). Both parts are quoted per engine, so
+// an embedded quote is doubled and the name can never break out of its identifier.
+pub fn qualified_table(engine: DbEngine, schema: Option<&str>, table: &str) -> String {
+    match schema {
+        Some(schema) => format!(
+            "{}.{}",
+            quote_identifier(engine, schema),
+            quote_identifier(engine, table)
+        ),
+        None => quote_identifier(engine, table),
     }
 }
 
@@ -354,6 +380,9 @@ pub struct SchemaColumn {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableSchema {
+    // The owning Postgres schema, so autocomplete can disambiguate same-named tables across schemas.
+    // None for MySQL/SQLite (no schema level).
+    pub schema: Option<String>,
     pub name: String,
     pub columns: Vec<SchemaColumn>,
 }
@@ -365,33 +394,47 @@ pub fn quote_identifier(engine: DbEngine, name: &str) -> String {
     }
 }
 
-pub fn columns_query(engine: DbEngine) -> &'static str {
+// Postgres scopes introspection to a specific schema when one is known (`AND table_schema = $2`,
+// the caller binds the schema as the 2nd param) instead of the system-schema-exclusion filter, so
+// `public.users` and `analytics.users` introspect independently rather than via `search_path`.
+// MySQL stays scoped to `DATABASE()`; SQLite's pragma has no schema. `has_schema` only affects the
+// Postgres branch (MySQL/SQLite never carry a schema).
+fn postgres_table_scope(has_schema: bool) -> &'static str {
+    if has_schema {
+        "table_schema = $2"
+    } else {
+        "table_schema NOT IN ('pg_catalog', 'information_schema')"
+    }
+}
+
+pub fn columns_query(engine: DbEngine, has_schema: bool) -> String {
     match engine {
-        DbEngine::Postgres => {
+        DbEngine::Postgres => format!(
             "SELECT column_name::text FROM information_schema.columns \
-             WHERE table_name = $1 \
-             AND table_schema NOT IN ('pg_catalog', 'information_schema') \
-             ORDER BY ordinal_position"
-        }
-        DbEngine::Mysql => {
-            "SELECT column_name FROM information_schema.columns \
+             WHERE table_name = $1 AND {} \
+             ORDER BY ordinal_position",
+            postgres_table_scope(has_schema)
+        ),
+        DbEngine::Mysql => "SELECT column_name FROM information_schema.columns \
              WHERE table_name = ? AND table_schema = DATABASE() \
              ORDER BY ordinal_position"
-        }
-        DbEngine::Sqlite => "SELECT name FROM pragma_table_info(?) ORDER BY cid",
+            .to_string(),
+        DbEngine::Sqlite => "SELECT name FROM pragma_table_info(?) ORDER BY cid".to_string(),
     }
 }
 
 // Reads every base table and its columns in one statement, ordered by table then column position,
-// so `fetch_schema` can fold the flat (table, column, type) rows into per-table groups for the SQL
-// editor's autocomplete. No bind params - it covers the whole database, not one named table.
+// so `fetch_schema` can fold the flat rows into per-table groups for the SQL editor's autocomplete.
+// No bind params - it covers the whole database, not one named table. Postgres leads with
+// `table_schema` (4 columns) so groups disambiguate same-named tables across schemas; MySQL/SQLite
+// have no schema level (3 columns: table, column, type). `fetch_schema` reads the shape per engine.
 pub fn schema_query(engine: DbEngine) -> &'static str {
     match engine {
         DbEngine::Postgres => {
-            "SELECT table_name::text, column_name::text, data_type::text \
+            "SELECT table_schema::text, table_name::text, column_name::text, data_type::text \
              FROM information_schema.columns \
              WHERE table_schema NOT IN ('pg_catalog', 'information_schema') \
-             ORDER BY table_name, ordinal_position"
+             ORDER BY table_schema, table_name, ordinal_position"
         }
         DbEngine::Mysql => {
             "SELECT table_name, column_name, data_type \
@@ -423,6 +466,7 @@ fn text_expression(engine: DbEngine, column: &str) -> String {
 // columns sort numerically, and is dropped unless its column is in the known `columns` list.
 pub fn build_rows_query(
     engine: DbEngine,
+    schema: Option<&str>,
     table: &str,
     columns: &[String],
     limit: u32,
@@ -460,21 +504,38 @@ pub fn build_rows_query(
 
     format!(
         "SELECT {selected} FROM {table}{where_clause}{order_clause} LIMIT {limit}{offset_clause}",
-        table = quote_identifier(engine, table),
+        table = qualified_table(engine, schema, table),
     )
 }
 
 // The unbounded row count the table card shows in its status bar ("N of TOTAL"). Mirrors the
 // rows query's filter handling (same parenthesized raw WHERE), minus columns/sort/limit.
-pub fn build_count_query(engine: DbEngine, table: &str, filter: Option<&str>) -> String {
+pub fn build_count_query(
+    engine: DbEngine,
+    schema: Option<&str>,
+    table: &str,
+    filter: Option<&str>,
+) -> String {
     let where_clause = match filter.map(str::trim).filter(|text| !text.is_empty()) {
         Some(expression) => format!(" WHERE ({expression})"),
         None => String::new(),
     };
     format!(
         "SELECT COUNT(*) FROM {table}{where_clause}",
-        table = quote_identifier(engine, table),
+        table = qualified_table(engine, schema, table),
     )
+}
+
+// The value bound to the primary-key query's parameter. Postgres resolves the table via
+// `$1::regclass`, which parses a (possibly quoted) qualified SQL name, so the bind is the
+// schema-qualified, quoted name (`"analytics"."users"`) when a schema is known - this is what pins
+// the lookup to the right schema rather than the server's `search_path`. MySQL/SQLite match the
+// bare table name in information_schema/pragma, so they bind the unquoted table.
+fn pk_regclass_bind(engine: DbEngine, schema: Option<&str>, table: &str) -> String {
+    match engine {
+        DbEngine::Postgres => qualified_table(engine, schema, table),
+        DbEngine::Mysql | DbEngine::Sqlite => table.to_string(),
+    }
 }
 
 pub fn primary_key_query(engine: DbEngine) -> &'static str {
@@ -502,6 +563,7 @@ pub fn primary_key_query(engine: DbEngine) -> &'static str {
 // any pk type works. Returns (sql, ordered bind values).
 pub fn build_update_query_value(
     engine: DbEngine,
+    schema: Option<&str>,
     table: &str,
     column: &str,
     column_type: &str,
@@ -509,7 +571,7 @@ pub fn build_update_query_value(
     new_value: Option<&str>,
     pk_value: &str,
 ) -> (String, Vec<String>) {
-    let quoted_table = quote_identifier(engine, table);
+    let quoted_table = qualified_table(engine, schema, table);
     let quoted_column = quote_identifier(engine, column);
     let mut binds = Vec::new();
 
@@ -557,11 +619,12 @@ pub fn build_update_query_value(
 // defaults/sequences still apply to columns the user left untouched (those aren't listed at all).
 pub fn build_insert_query(
     engine: DbEngine,
+    schema: Option<&str>,
     table: &str,
     columns: &[(&str, &str)],
     values: &[Option<&str>],
 ) -> (String, Vec<String>) {
-    let quoted_table = quote_identifier(engine, table);
+    let quoted_table = qualified_table(engine, schema, table);
     let quoted_columns = columns
         .iter()
         .map(|(name, _)| quote_identifier(engine, name))
@@ -593,11 +656,12 @@ pub fn build_insert_query(
 // (PG `::text`, MySQL/SQLite `CAST(... AS CHAR/TEXT)`) so any pk type works, mirroring the update path.
 pub fn build_delete_query(
     engine: DbEngine,
+    schema: Option<&str>,
     table: &str,
     pk_column: &str,
     pk_value: &str,
 ) -> (String, Vec<String>) {
-    let quoted_table = quote_identifier(engine, table);
+    let quoted_table = qualified_table(engine, schema, table);
     let pk_match = match engine {
         DbEngine::Postgres => format!("{}::text = $1", quote_identifier(engine, pk_column)),
         DbEngine::Mysql | DbEngine::Sqlite => {
@@ -611,6 +675,7 @@ pub fn build_delete_query(
 #[cfg(test)]
 pub fn build_update_query(
     engine: DbEngine,
+    schema: Option<&str>,
     table: &str,
     column: &str,
     column_type: &str,
@@ -620,6 +685,7 @@ pub fn build_update_query(
 ) -> (String, Vec<String>) {
     build_update_query_value(
         engine,
+        schema,
         table,
         column,
         column_type,
@@ -1015,7 +1081,7 @@ async fn run_query_prepared(
 pub async fn connect_database(
     connection_id: String,
     config: ConnectionConfig,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<TableRef>, String> {
     // The connect is cancellable like a query: its token lives under a `connect:` key so the
     // Settings "Cancel" button (cancel_query) can abort a stuck connect without colliding with a
     // query request id. The guard removes the token on every exit.
@@ -1047,7 +1113,7 @@ pub fn connect_cancel_key(connection_id: &str) -> String {
 async fn open_and_catalog(
     connection_id: String,
     config: ConnectionConfig,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<TableRef>, String> {
     let engine = config.engine();
     let pool = AnyPoolOptions::new()
         .max_connections(POOL_MAX_CONNECTIONS)
@@ -1075,11 +1141,23 @@ async fn open_and_catalog(
         previous.pool.close().await;
     }
 
+    // Postgres returns (schema, table) so the sidebar can group + every command can qualify;
+    // MySQL/SQLite return the bare name only (no schema level).
+    let has_schema_column = matches!(engine, DbEngine::Postgres);
     rows.expect("error returned above")
         .iter()
         .map(|row| {
-            row.try_get::<String, _>(0)
-                .map_err(|error| error.to_string())
+            if has_schema_column {
+                let schema = row.try_get::<String, _>(0).map_err(|e| e.to_string())?;
+                let name = row.try_get::<String, _>(1).map_err(|e| e.to_string())?;
+                Ok(TableRef {
+                    schema: Some(schema),
+                    name,
+                })
+            } else {
+                let name = row.try_get::<String, _>(0).map_err(|e| e.to_string())?;
+                Ok(TableRef { schema: None, name })
+            }
         })
         .collect()
 }
@@ -1095,34 +1173,48 @@ pub async fn disconnect_database(connection_id: String) {
 pub async fn fetch_schema(connection_id: String) -> Result<Vec<TableSchema>, String> {
     let held = with_pool(&connection_id)?;
 
-    let triples = sqlx::query(schema_query(held.engine))
+    // Postgres leads with `table_schema` (4 columns) so the autocomplete groups can disambiguate
+    // same-named tables across schemas; MySQL/SQLite have no schema level (3 columns -> None).
+    let has_schema_column = matches!(held.engine, DbEngine::Postgres);
+    let rows = sqlx::query(schema_query(held.engine))
         .fetch_all(&held.pool)
         .await
         .map_err(|error| error.to_string())?
         .iter()
         .map(|row| {
+            let offset = if has_schema_column { 1 } else { 0 };
+            let schema = if has_schema_column {
+                Some(row.try_get::<String, _>(0).map_err(|e| e.to_string())?)
+            } else {
+                None
+            };
             Ok((
-                row.try_get::<String, _>(0).map_err(|e| e.to_string())?,
-                row.try_get::<String, _>(1).map_err(|e| e.to_string())?,
-                row.try_get::<String, _>(2).map_err(|e| e.to_string())?,
+                schema,
+                row.try_get::<String, _>(offset).map_err(|e| e.to_string())?,
+                row.try_get::<String, _>(offset + 1)
+                    .map_err(|e| e.to_string())?,
+                row.try_get::<String, _>(offset + 2)
+                    .map_err(|e| e.to_string())?,
             ))
         })
-        .collect::<Result<Vec<(String, String, String)>, String>>()?;
+        .collect::<Result<Vec<(Option<String>, String, String, String)>, String>>()?;
 
-    Ok(group_schema(triples))
+    Ok(group_schema(rows))
 }
 
-// Folds flat (table, column, type) rows - already ordered by table then column position - into
-// one `TableSchema` per table, preserving column order. Relies on the query's ORDER BY so equal
-// table names arrive contiguously.
-fn group_schema(triples: Vec<(String, String, String)>) -> Vec<TableSchema> {
-    triples.into_iter().fold(
+// Folds flat (schema, table, column, type) rows - already ordered by schema, table, column position
+// - into one `TableSchema` per (schema, table), preserving column order. Relies on the query's
+// ORDER BY so equal (schema, table) pairs arrive contiguously; a new group starts whenever either
+// the schema or the table name changes (so `public.users` and `analytics.users` stay distinct).
+fn group_schema(rows: Vec<(Option<String>, String, String, String)>) -> Vec<TableSchema> {
+    rows.into_iter().fold(
         Vec::<TableSchema>::new(),
-        |mut tables, (table, column, data_type)| {
+        |mut tables, (schema, table, column, data_type)| {
             let entry = match tables.last_mut() {
-                Some(last) if last.name == table => last,
+                Some(last) if last.name == table && last.schema == schema => last,
                 _ => {
                     tables.push(TableSchema {
+                        schema,
                         name: table,
                         columns: Vec::new(),
                     });
@@ -1140,21 +1232,28 @@ fn group_schema(triples: Vec<(String, String, String)>) -> Vec<TableSchema> {
 
 pub async fn count_table_rows(
     connection_id: String,
+    schema: Option<String>,
     table: String,
     filter: Option<String>,
 ) -> Result<i64, String> {
     let held = with_pool(&connection_id)?;
 
-    sqlx::query(&build_count_query(held.engine, &table, filter.as_deref()))
-        .fetch_one(&held.pool)
-        .await
-        .map_err(|error| error.to_string())?
-        .try_get::<i64, _>(0)
-        .map_err(|error| error.to_string())
+    sqlx::query(&build_count_query(
+        held.engine,
+        schema.as_deref(),
+        &table,
+        filter.as_deref(),
+    ))
+    .fetch_one(&held.pool)
+    .await
+    .map_err(|error| error.to_string())?
+    .try_get::<i64, _>(0)
+    .map_err(|error| error.to_string())
 }
 
 pub async fn fetch_table_rows(
     connection_id: String,
+    schema: Option<String>,
     table: String,
     limit: u32,
     offset: u32,
@@ -1166,6 +1265,7 @@ pub async fn fetch_table_rows(
     read_table_rows(
         &held.pool,
         held.engine,
+        schema.as_deref(),
         &table,
         limit,
         offset,
@@ -1175,20 +1275,35 @@ pub async fn fetch_table_rows(
     .await
 }
 
+// Runs an introspection query (column list / types / nullability) for one table: binds the table
+// name as $1, and the schema as $2 only when the query is the schema-pinned Postgres form. Keeps the
+// optional-second-bind in one place so each introspection call site stays a single expression.
+async fn fetch_introspection(
+    pool: &sqlx::AnyPool,
+    sql: &str,
+    table: &str,
+    schema: Option<&str>,
+) -> Result<Vec<sqlx::any::AnyRow>, String> {
+    let mut query = sqlx::query(sql).bind(table);
+    if let Some(schema) = schema {
+        query = query.bind(schema);
+    }
+    query.fetch_all(pool).await.map_err(|e| e.to_string())
+}
+
 async fn read_table_rows(
     pool: &sqlx::AnyPool,
     engine: DbEngine,
+    schema: Option<&str>,
     table: &str,
     limit: u32,
     offset: u32,
     filter: Option<&str>,
     sort: Option<&Sort>,
 ) -> Result<TableRows, String> {
-    let column_rows = sqlx::query(columns_query(engine))
-        .bind(table)
-        .fetch_all(pool)
-        .await
-        .map_err(|error| error.to_string())?;
+    let has_schema = schema.is_some();
+    let column_rows =
+        fetch_introspection(pool, &columns_query(engine, has_schema), table, schema).await?;
 
     let names = column_rows
         .iter()
@@ -1206,8 +1321,12 @@ async fn read_table_rows(
         });
     }
 
+    // The Postgres pk query resolves the table via `$1::regclass`, so the bound value is the
+    // (quoted) schema-qualified name - regclass parses a quoted, qualified SQL name. MySQL/SQLite
+    // bind the bare table (their pk query reads information_schema/pragma, not regclass).
+    let pk_bind = pk_regclass_bind(engine, schema, table);
     let pk_rows = sqlx::query(primary_key_query(engine))
-        .bind(table)
+        .bind(&pk_bind)
         .fetch_all(pool)
         .await
         .map_err(|error| error.to_string())?;
@@ -1215,11 +1334,8 @@ async fn read_table_rows(
         .first()
         .and_then(|row| row.try_get::<String, _>(0).ok());
 
-    let type_rows = sqlx::query(column_types_query(engine))
-        .bind(table)
-        .fetch_all(pool)
-        .await
-        .map_err(|error| error.to_string())?;
+    let type_rows =
+        fetch_introspection(pool, &column_types_query(engine, has_schema), table, schema).await?;
     let types: std::collections::HashMap<String, String> = type_rows
         .iter()
         .filter_map(|row| {
@@ -1230,11 +1346,8 @@ async fn read_table_rows(
         })
         .collect();
 
-    let nullable_rows = sqlx::query(nullable_query(engine))
-        .bind(table)
-        .fetch_all(pool)
-        .await
-        .map_err(|error| error.to_string())?;
+    let nullable_rows =
+        fetch_introspection(pool, &nullable_query(engine, has_schema), table, schema).await?;
     let nullable: std::collections::HashMap<String, bool> = nullable_rows
         .iter()
         .filter_map(|row| {
@@ -1248,7 +1361,7 @@ async fn read_table_rows(
     let columns = assemble_columns(&names, &types, &nullable, primary_key.as_deref());
 
     let data_rows = sqlx::query(&build_rows_query(
-        engine, table, &names, limit, offset, filter, sort,
+        engine, schema, table, &names, limit, offset, filter, sort,
     ))
     .fetch_all(pool)
     .await
@@ -1306,18 +1419,17 @@ pub enum RowMutation {
     },
 }
 
-fn column_types_query(engine: DbEngine) -> &'static str {
+fn column_types_query(engine: DbEngine, has_schema: bool) -> String {
     match engine {
-        DbEngine::Postgres => {
+        DbEngine::Postgres => format!(
             "SELECT column_name::text, udt_name::text FROM information_schema.columns \
-             WHERE table_name = $1 \
-             AND table_schema NOT IN ('pg_catalog', 'information_schema')"
-        }
-        DbEngine::Mysql => {
-            "SELECT column_name, data_type FROM information_schema.columns \
+             WHERE table_name = $1 AND {}",
+            postgres_table_scope(has_schema)
+        ),
+        DbEngine::Mysql => "SELECT column_name, data_type FROM information_schema.columns \
              WHERE table_name = ? AND table_schema = DATABASE()"
-        }
-        DbEngine::Sqlite => "SELECT name, type FROM pragma_table_info(?)",
+            .to_string(),
+        DbEngine::Sqlite => "SELECT name, type FROM pragma_table_info(?)".to_string(),
     }
 }
 
@@ -1325,18 +1437,17 @@ fn column_types_query(engine: DbEngine) -> &'static str {
 // SQLite's pragma reports `notnull` as 0/1 (inverted), so the second column is the not-null
 // flag and the assembler inverts it. The two PG/MySQL columns are (name, is_nullable text);
 // SQLite returns (name, notnull int) - both read by `read_nullable` per engine.
-fn nullable_query(engine: DbEngine) -> &'static str {
+fn nullable_query(engine: DbEngine, has_schema: bool) -> String {
     match engine {
-        DbEngine::Postgres => {
+        DbEngine::Postgres => format!(
             "SELECT column_name::text, is_nullable::text FROM information_schema.columns \
-             WHERE table_name = $1 \
-             AND table_schema NOT IN ('pg_catalog', 'information_schema')"
-        }
-        DbEngine::Mysql => {
-            "SELECT column_name, is_nullable FROM information_schema.columns \
+             WHERE table_name = $1 AND {}",
+            postgres_table_scope(has_schema)
+        ),
+        DbEngine::Mysql => "SELECT column_name, is_nullable FROM information_schema.columns \
              WHERE table_name = ? AND table_schema = DATABASE()"
-        }
-        DbEngine::Sqlite => "SELECT name, notnull FROM pragma_table_info(?)",
+            .to_string(),
+        DbEngine::Sqlite => "SELECT name, notnull FROM pragma_table_info(?)".to_string(),
     }
 }
 
@@ -1362,21 +1473,23 @@ fn assemble_columns(
 
 pub async fn apply_row_mutations(
     connection_id: String,
+    schema: Option<String>,
     table: String,
     mutations: Vec<RowMutation>,
 ) -> Result<u64, String> {
     let held = with_pool(&connection_id)?;
-    apply_mutations(&held.pool, held.engine, &table, &mutations).await
+    apply_mutations(&held.pool, held.engine, schema.as_deref(), &table, &mutations).await
 }
 
 async fn apply_mutations(
     pool: &sqlx::AnyPool,
     engine: DbEngine,
+    schema: Option<&str>,
     table: &str,
     mutations: &[RowMutation],
 ) -> Result<u64, String> {
     let pk_rows = sqlx::query(primary_key_query(engine))
-        .bind(table)
+        .bind(pk_regclass_bind(engine, schema, table))
         .fetch_all(pool)
         .await
         .map_err(|error| error.to_string())?;
@@ -1391,11 +1504,13 @@ async fn apply_mutations(
         .first()
         .ok_or_else(|| format!("table '{table}' has no primary key; cannot edit"))?;
 
-    let type_rows = sqlx::query(column_types_query(engine))
-        .bind(table)
-        .fetch_all(pool)
-        .await
-        .map_err(|error| error.to_string())?;
+    let type_rows = fetch_introspection(
+        pool,
+        &column_types_query(engine, schema.is_some()),
+        table,
+        schema,
+    )
+    .await?;
     let column_types: std::collections::HashMap<String, String> = type_rows
         .iter()
         .filter_map(|row| {
@@ -1407,7 +1522,7 @@ async fn apply_mutations(
 
     let mut affected = 0;
     for mutation in mutations {
-        let (sql, binds) = build_mutation(engine, table, pk_column, &column_types, mutation)?;
+        let (sql, binds) = build_mutation(engine, schema, table, pk_column, &column_types, mutation)?;
         let mut query = sqlx::query(&sql);
         for bind in &binds {
             query = query.bind(bind);
@@ -1423,9 +1538,10 @@ async fn apply_mutations(
 
 // Translates one staged mutation into (sql, binds). Cell + Insert resolve each column's type from
 // the introspected map (degrading to "" like the update path when a type is unknown); Delete needs
-// only the pk.
+// only the pk. All three qualify the target with the schema when one is known.
 fn build_mutation(
     engine: DbEngine,
+    schema: Option<&str>,
     table: &str,
     pk_column: &str,
     column_types: &std::collections::HashMap<String, String>,
@@ -1442,6 +1558,7 @@ fn build_mutation(
                 .ok_or_else(|| format!("unknown column '{column}'"))?;
             Ok(build_update_query_value(
                 engine,
+                schema,
                 table,
                 column,
                 column_type,
@@ -1459,10 +1576,10 @@ fn build_mutation(
                 })
                 .collect::<Vec<_>>();
             let cells = values.values().map(Option::as_deref).collect::<Vec<_>>();
-            Ok(build_insert_query(engine, table, &columns, &cells))
+            Ok(build_insert_query(engine, schema, table, &columns, &cells))
         }
         RowMutation::Delete { pk_value } => {
-            Ok(build_delete_query(engine, table, pk_column, pk_value))
+            Ok(build_delete_query(engine, schema, table, pk_column, pk_value))
         }
     }
 }
@@ -1473,10 +1590,10 @@ mod tests {
         assemble_columns, build_count_query, build_delete_query, build_insert_query,
         build_rows_query, build_update_query, build_update_query_value, build_url, cancel_query,
         catalog_query, column_types_query, columns_query, group_schema, is_row_returning,
-        is_subquery_wrappable, nullable_query, parse_json_rows, primary_key_query,
-        quote_identifier, schema_query, split_sql_statements, with_pool, wrap_columns_probe,
-        wrap_select_as_json, wrap_select_as_text, ConnectionConfig, DbEngine, Sort, CANCELS,
-        CANCEL_SENTINEL,
+        is_subquery_wrappable, nullable_query, parse_json_rows, pk_regclass_bind,
+        primary_key_query, qualified_table, quote_identifier, schema_query, split_sql_statements,
+        with_pool, wrap_columns_probe, wrap_select_as_json, wrap_select_as_text, ConnectionConfig,
+        DbEngine, Sort, CANCELS, CANCEL_SENTINEL,
     };
     use std::collections::HashMap;
 
@@ -1607,6 +1724,108 @@ mod tests {
         );
     }
 
+    // AC-001 - behavior (the Postgres catalog selects (schema, table) ordered by both, so the
+    // sidebar can group by schema and qualify each table)
+    #[test]
+    fn should_select_schema_and_table_in_the_postgres_catalog_query() {
+        let query = catalog_query(DbEngine::Postgres);
+        assert!(
+            query.contains("table_schema::text") && query.contains("table_name::text"),
+            "Postgres catalog must return (schema, table), both cast to text: {query}"
+        );
+        assert!(
+            query.contains("ORDER BY table_schema, table_name"),
+            "Postgres catalog must order by schema then table: {query}"
+        );
+    }
+
+    // AC-002 - behavior (MySQL/SQLite catalogs return the bare name only - no schema level)
+    #[test]
+    fn should_select_only_the_table_name_in_the_mysql_and_sqlite_catalog_queries() {
+        assert!(!catalog_query(DbEngine::Mysql).contains("table_schema::text"));
+        assert!(!catalog_query(DbEngine::Mysql).contains("ORDER BY table_schema"));
+        assert!(!catalog_query(DbEngine::Sqlite).contains("table_schema"));
+    }
+
+    // AC-007, E-4 - behavior (qualified_table prefixes the quoted schema for Postgres, leaves a
+    // bare quoted name when no schema, and doubles embedded quotes on both parts)
+    #[test]
+    fn should_qualify_a_table_with_its_schema_when_one_is_known() {
+        assert_eq!(
+            qualified_table(DbEngine::Postgres, Some("analytics"), "users"),
+            "\"analytics\".\"users\""
+        );
+        assert_eq!(
+            qualified_table(DbEngine::Postgres, None, "users"),
+            "\"users\""
+        );
+        assert_eq!(
+            qualified_table(DbEngine::Postgres, Some("we\"ird"), "ta\"ble"),
+            "\"we\"\"ird\".\"ta\"\"ble\""
+        );
+    }
+
+    // AC-008 - behavior (no schema -> bare quoted name, per engine quoting)
+    #[test]
+    fn should_quote_the_bare_table_when_no_schema_is_supplied() {
+        assert_eq!(qualified_table(DbEngine::Mysql, None, "users"), "`users`");
+        assert_eq!(qualified_table(DbEngine::Sqlite, None, "users"), "\"users\"");
+    }
+
+    // AC-007 - behavior (the rows query targets the schema-qualified table when a schema is known)
+    #[test]
+    fn should_build_a_schema_qualified_rows_query_for_postgres() {
+        let query = build_rows_query(
+            DbEngine::Postgres,
+            Some("analytics"),
+            "users",
+            &cols(),
+            200,
+            0,
+            None,
+            None,
+        );
+        assert!(
+            query.contains("FROM \"analytics\".\"users\""),
+            "rows query must target the qualified table: {query}"
+        );
+    }
+
+    // AC-007 - behavior (count/update/insert/delete all target the schema-qualified table)
+    #[test]
+    fn should_qualify_the_target_in_count_update_insert_and_delete_for_postgres() {
+        assert!(build_count_query(DbEngine::Postgres, Some("s"), "t", None)
+            .contains("FROM \"s\".\"t\""));
+
+        let (update, _) =
+            build_update_query(DbEngine::Postgres, Some("s"), "t", "c", "int4", "id", "1", "2");
+        assert!(update.starts_with("UPDATE \"s\".\"t\" "), "got: {update}");
+
+        let (insert, _) =
+            build_insert_query(DbEngine::Postgres, Some("s"), "t", &[("c", "text")], &[Some("v")]);
+        assert!(insert.starts_with("INSERT INTO \"s\".\"t\" "), "got: {insert}");
+
+        let (delete, _) = build_delete_query(DbEngine::Postgres, Some("s"), "t", "id", "2");
+        assert!(delete.starts_with("DELETE FROM \"s\".\"t\" "), "got: {delete}");
+    }
+
+    // AC-007/009 - behavior (the PG primary-key lookup binds the quoted, schema-qualified name so
+    // `$1::regclass` resolves the table in the right schema, not via search_path; MySQL/SQLite bind
+    // the bare table)
+    #[test]
+    fn should_bind_the_qualified_name_for_the_postgres_pk_regclass_lookup() {
+        assert_eq!(
+            pk_regclass_bind(DbEngine::Postgres, Some("analytics"), "users"),
+            "\"analytics\".\"users\""
+        );
+        assert_eq!(
+            pk_regclass_bind(DbEngine::Postgres, None, "users"),
+            "\"users\""
+        );
+        assert_eq!(pk_regclass_bind(DbEngine::Mysql, None, "users"), "users");
+        assert_eq!(pk_regclass_bind(DbEngine::Sqlite, None, "users"), "users");
+    }
+
     // behavior (identifiers quoted per engine, injection-safe)
     #[test]
     fn should_quote_identifiers_with_double_quotes_for_postgres() {
@@ -1630,20 +1849,54 @@ mod tests {
     // behavior (columns query is parameterized + scoped, Postgres `name` cast to text)
     #[test]
     fn should_build_a_parameterized_columns_query_per_engine() {
-        let postgres = columns_query(DbEngine::Postgres);
+        let postgres = columns_query(DbEngine::Postgres, false);
         assert!(postgres.contains("column_name::text"));
         assert!(postgres.contains("$1"));
         assert!(postgres.contains("ORDER BY ordinal_position"));
 
-        let mysql = columns_query(DbEngine::Mysql);
+        let mysql = columns_query(DbEngine::Mysql, false);
         assert!(mysql.contains("table_schema = DATABASE()"));
         assert!(mysql.contains('?'));
+    }
+
+    // AC-007/008 - behavior (the Postgres introspection query pins to a specific schema via $2 when
+    // a schema is known, and falls back to the system-schema exclusion when not; MySQL/SQLite ignore
+    // the flag)
+    #[test]
+    fn should_scope_the_postgres_columns_query_to_a_schema_when_one_is_known() {
+        let pinned = columns_query(DbEngine::Postgres, true);
+        assert!(
+            pinned.contains("table_schema = $2"),
+            "schema-pinned PG query must bind the schema as $2: {pinned}"
+        );
+        assert!(
+            !pinned.contains("NOT IN"),
+            "schema-pinned PG query must not also exclude system schemas: {pinned}"
+        );
+
+        let unpinned = columns_query(DbEngine::Postgres, false);
+        assert!(
+            unpinned.contains("NOT IN ('pg_catalog', 'information_schema')"),
+            "unpinned PG query keeps the system-schema exclusion: {unpinned}"
+        );
+        assert!(!unpinned.contains("$2"), "unpinned PG query has no $2: {unpinned}");
+
+        // MySQL/SQLite never carry a schema; the flag must not change their query.
+        assert_eq!(
+            columns_query(DbEngine::Mysql, true),
+            columns_query(DbEngine::Mysql, false)
+        );
+        assert_eq!(
+            columns_query(DbEngine::Sqlite, true),
+            columns_query(DbEngine::Sqlite, false)
+        );
     }
 
     // behavior (Postgres casts every column to text and applies the limit; no filter -> no WHERE)
     #[test]
     fn should_cast_each_column_to_text_and_limit_for_postgres() {
-        let query = build_rows_query(DbEngine::Postgres, "product", &cols(), 200, 0, None, None);
+        let query =
+            build_rows_query(DbEngine::Postgres, None, "product", &cols(), 200, 0, None, None);
         assert_eq!(
             query,
             "SELECT \"id\"::text, \"price\"::text FROM \"product\" LIMIT 200"
@@ -1653,7 +1906,8 @@ mod tests {
     // behavior (MySQL casts every column to CHAR and applies the limit; no filter -> no WHERE)
     #[test]
     fn should_cast_each_column_to_char_and_limit_for_mysql() {
-        let query = build_rows_query(DbEngine::Mysql, "product", &cols(), 100, 0, None, None);
+        let query =
+            build_rows_query(DbEngine::Mysql, None, "product", &cols(), 100, 0, None, None);
         assert_eq!(
             query,
             "SELECT CAST(`id` AS CHAR), CAST(`price` AS CHAR) FROM `product` LIMIT 100"
@@ -1665,6 +1919,7 @@ mod tests {
     fn should_wrap_a_raw_filter_in_parens_as_a_where_clause() {
         let query = build_rows_query(
             DbEngine::Postgres,
+            None,
             "product",
             &cols(),
             200,
@@ -1683,6 +1938,7 @@ mod tests {
     fn should_place_the_where_before_the_limit_for_mysql() {
         let query = build_rows_query(
             DbEngine::Mysql,
+            None,
             "product",
             &cols(),
             50,
@@ -1701,6 +1957,7 @@ mod tests {
     fn should_ignore_a_blank_filter() {
         let query = build_rows_query(
             DbEngine::Postgres,
+            None,
             "product",
             &cols(),
             200,
@@ -1714,28 +1971,29 @@ mod tests {
     // behavior (count query is COUNT(*) over the table; no filter -> no WHERE)
     #[test]
     fn should_build_a_count_query_without_a_filter() {
-        let query = build_count_query(DbEngine::Postgres, "product", None);
+        let query = build_count_query(DbEngine::Postgres, None, "product", None);
         assert_eq!(query, "SELECT COUNT(*) FROM \"product\"");
     }
 
     // behavior (count query wraps the raw filter in parens like the rows query)
     #[test]
     fn should_wrap_the_filter_in_parens_for_the_count_query() {
-        let query = build_count_query(DbEngine::Mysql, "product", Some("price > 10"));
+        let query = build_count_query(DbEngine::Mysql, None, "product", Some("price > 10"));
         assert_eq!(query, "SELECT COUNT(*) FROM `product` WHERE (price > 10)");
     }
 
     // behavior (a blank filter is ignored in the count query)
     #[test]
     fn should_ignore_a_blank_filter_in_the_count_query() {
-        let query = build_count_query(DbEngine::Sqlite, "product", Some("  "));
+        let query = build_count_query(DbEngine::Sqlite, None, "product", Some("  "));
         assert_eq!(query, "SELECT COUNT(*) FROM \"product\"");
     }
 
     // AC-001 - behavior (a non-zero offset emits OFFSET after LIMIT; offset 0 emits none)
     #[test]
     fn should_append_offset_after_limit_when_offset_is_non_zero() {
-        let query = build_rows_query(DbEngine::Postgres, "product", &cols(), 200, 200, None, None);
+        let query =
+            build_rows_query(DbEngine::Postgres, None, "product", &cols(), 200, 200, None, None);
         assert_eq!(
             query,
             "SELECT \"id\"::text, \"price\"::text FROM \"product\" LIMIT 200 OFFSET 200"
@@ -1751,6 +2009,7 @@ mod tests {
         };
         let query = build_rows_query(
             DbEngine::Postgres,
+            None,
             "product",
             &cols(),
             200,
@@ -1773,6 +2032,7 @@ mod tests {
         };
         let query = build_rows_query(
             DbEngine::Mysql,
+            None,
             "product",
             &cols(),
             200,
@@ -1795,6 +2055,7 @@ mod tests {
         };
         let query = build_rows_query(
             DbEngine::Postgres,
+            None,
             "product",
             &cols(),
             200,
@@ -1817,6 +2078,7 @@ mod tests {
         };
         let query = build_rows_query(
             DbEngine::Postgres,
+            None,
             "product",
             &cols(),
             200,
@@ -1867,12 +2129,12 @@ mod tests {
     // AC-004 - behavior (each engine exposes a parameterized nullable query)
     #[test]
     fn should_build_a_parameterized_nullable_query_per_engine() {
-        assert!(nullable_query(DbEngine::Postgres).contains("is_nullable"));
-        assert!(nullable_query(DbEngine::Postgres).contains("$1"));
-        assert!(nullable_query(DbEngine::Mysql).contains("is_nullable"));
-        assert!(nullable_query(DbEngine::Mysql).contains('?'));
-        assert!(nullable_query(DbEngine::Sqlite).contains("pragma_table_info"));
-        assert!(nullable_query(DbEngine::Sqlite).contains("notnull"));
+        assert!(nullable_query(DbEngine::Postgres, false).contains("is_nullable"));
+        assert!(nullable_query(DbEngine::Postgres, false).contains("$1"));
+        assert!(nullable_query(DbEngine::Mysql, false).contains("is_nullable"));
+        assert!(nullable_query(DbEngine::Mysql, false).contains('?'));
+        assert!(nullable_query(DbEngine::Sqlite, false).contains("pragma_table_info"));
+        assert!(nullable_query(DbEngine::Sqlite, false).contains("notnull"));
     }
 
     // behavior (UPDATE casts the value to the column type, matches the pk as text - Postgres)
@@ -1880,6 +2142,7 @@ mod tests {
     fn should_build_a_typed_update_for_postgres() {
         let (sql, binds) = build_update_query(
             DbEngine::Postgres,
+            None,
             "product",
             "price",
             "int4",
@@ -1899,6 +2162,7 @@ mod tests {
     fn should_build_an_update_for_mysql() {
         let (sql, binds) = build_update_query(
             DbEngine::Mysql,
+            None,
             "product",
             "price",
             "int",
@@ -1918,6 +2182,7 @@ mod tests {
     fn should_set_null_literal_when_the_new_value_is_none() {
         let (sql, binds) = build_update_query_value(
             DbEngine::Postgres,
+            None,
             "product",
             "deleted_at",
             "timestamptz",
@@ -2179,7 +2444,7 @@ mod tests {
     // AC-009, TC-006 - behavior (columns query is parameterized over pragma_table_info)
     #[test]
     fn should_build_a_parameterized_sqlite_columns_query_over_pragma_table_info() {
-        let query = columns_query(DbEngine::Sqlite);
+        let query = columns_query(DbEngine::Sqlite, false);
         assert!(
             query.contains("pragma_table_info"),
             "SQLite columns query must use pragma_table_info: {query}"
@@ -2193,7 +2458,7 @@ mod tests {
     // AC-009, TC-006 - behavior (column-types query is parameterized over pragma_table_info)
     #[test]
     fn should_build_a_parameterized_sqlite_column_types_query_over_pragma_table_info() {
-        let query = column_types_query(DbEngine::Sqlite);
+        let query = column_types_query(DbEngine::Sqlite, false);
         assert!(
             query.contains("pragma_table_info"),
             "SQLite column-types query must use pragma_table_info: {query}"
@@ -2229,7 +2494,8 @@ mod tests {
     // AC-005, TC-007 - behavior (SQLite casts every column to TEXT, applies the limit, double-quotes)
     #[test]
     fn should_cast_each_column_to_text_and_limit_for_sqlite() {
-        let query = build_rows_query(DbEngine::Sqlite, "product", &cols(), 200, 0, None, None);
+        let query =
+            build_rows_query(DbEngine::Sqlite, None, "product", &cols(), 200, 0, None, None);
         assert_eq!(
             query,
             "SELECT CAST(\"id\" AS TEXT), CAST(\"price\" AS TEXT) FROM \"product\" LIMIT 200"
@@ -2245,6 +2511,7 @@ mod tests {
         };
         let query = build_rows_query(
             DbEngine::Sqlite,
+            None,
             "product",
             &cols(),
             200,
@@ -2263,6 +2530,7 @@ mod tests {
     fn should_build_an_update_for_sqlite() {
         let (sql, binds) = build_update_query(
             DbEngine::Sqlite,
+            None,
             "product",
             "price",
             "INTEGER",
@@ -2282,6 +2550,7 @@ mod tests {
     fn should_set_null_literal_when_the_new_value_is_none_for_sqlite() {
         let (sql, binds) = build_update_query_value(
             DbEngine::Sqlite,
+            None,
             "product",
             "deleted_at",
             "TEXT",
@@ -2331,6 +2600,7 @@ mod tests {
     fn should_build_a_typed_insert_for_postgres_when_some_columns_are_set() {
         let (sql, binds) = build_insert_query(
             DbEngine::Postgres,
+            None,
             "users",
             &[("name", "text"), ("email", "text")],
             &[Some("Dee"), Some("dee@example.com")],
@@ -2350,6 +2620,7 @@ mod tests {
     fn should_build_an_insert_binding_positionally_for_mysql() {
         let (sql, binds) = build_insert_query(
             DbEngine::Mysql,
+            None,
             "users",
             &[("name", "varchar"), ("email", "varchar")],
             &[Some("Dee"), Some("dee@example.com")],
@@ -2366,6 +2637,7 @@ mod tests {
     fn should_build_an_insert_binding_positionally_for_sqlite() {
         let (sql, binds) = build_insert_query(
             DbEngine::Sqlite,
+            None,
             "users",
             &[("name", "TEXT")],
             &[Some("Dee")],
@@ -2379,6 +2651,7 @@ mod tests {
     fn should_emit_a_null_literal_for_an_unset_value_in_an_insert() {
         let (sql, binds) = build_insert_query(
             DbEngine::Postgres,
+            None,
             "users",
             &[("name", "text"), ("note", "text")],
             &[Some("Dee"), None],
@@ -2393,7 +2666,7 @@ mod tests {
     // AC-007, TC-009 - behavior (Postgres DELETE matches the pk as text)
     #[test]
     fn should_build_a_delete_matching_the_pk_as_text_for_postgres() {
-        let (sql, binds) = build_delete_query(DbEngine::Postgres, "users", "id", "2");
+        let (sql, binds) = build_delete_query(DbEngine::Postgres, None, "users", "id", "2");
         assert_eq!(sql, "DELETE FROM \"users\" WHERE \"id\"::text = $1");
         assert_eq!(binds, vec!["2".to_string()]);
     }
@@ -2401,7 +2674,7 @@ mod tests {
     // AC-007, TC-009 - behavior (MySQL DELETE casts the pk to CHAR)
     #[test]
     fn should_build_a_delete_casting_the_pk_to_char_for_mysql() {
-        let (sql, binds) = build_delete_query(DbEngine::Mysql, "users", "id", "2");
+        let (sql, binds) = build_delete_query(DbEngine::Mysql, None, "users", "id", "2");
         assert_eq!(sql, "DELETE FROM `users` WHERE CAST(`id` AS CHAR) = ?");
         assert_eq!(binds, vec!["2".to_string()]);
     }
@@ -2409,7 +2682,7 @@ mod tests {
     // AC-007, TC-009 - behavior (SQLite DELETE casts the pk to TEXT)
     #[test]
     fn should_build_a_delete_casting_the_pk_to_text_for_sqlite() {
-        let (sql, binds) = build_delete_query(DbEngine::Sqlite, "users", "id", "2");
+        let (sql, binds) = build_delete_query(DbEngine::Sqlite, None, "users", "id", "2");
         assert_eq!(sql, "DELETE FROM \"users\" WHERE CAST(\"id\" AS TEXT) = ?");
         assert_eq!(binds, vec!["2".to_string()]);
     }
@@ -2427,6 +2700,11 @@ mod tests {
         assert!(
             postgres.contains("NOT IN ('pg_catalog', 'information_schema')"),
             "Postgres schema query must exclude system schemas: {postgres}"
+        );
+        assert!(
+            postgres.contains("table_schema"),
+            "Postgres schema query must select table_schema so autocomplete can disambiguate \
+             same-named tables across schemas: {postgres}"
         );
         assert!(
             postgres.contains("::text"),
@@ -2479,25 +2757,54 @@ mod tests {
         );
     }
 
-    // AC-006, TC-010 - behavior (flat ordered triples fold into one entry per table,
-    // columns kept in arrival order)
+    // AC-006, TC-010 - behavior (flat ordered rows fold into one entry per (schema, table),
+    // columns kept in arrival order; the schema is stamped onto each entry)
     #[test]
-    fn should_group_schema_triples_into_one_entry_per_table_preserving_column_order() {
-        let triples = vec![
-            ("users".into(), "id".into(), "int4".into()),
-            ("users".into(), "email".into(), "text".into()),
-            ("orders".into(), "id".into(), "int8".into()),
+    fn should_group_schema_rows_into_one_entry_per_table_preserving_column_order() {
+        let rows = vec![
+            (Some("public".into()), "users".into(), "id".into(), "int4".into()),
+            (Some("public".into()), "users".into(), "email".into(), "text".into()),
+            (Some("public".into()), "orders".into(), "id".into(), "int8".into()),
         ];
 
-        let grouped = group_schema(triples);
+        let grouped = group_schema(rows);
 
         assert_eq!(grouped.len(), 2);
+        assert_eq!(grouped[0].schema.as_deref(), Some("public"));
         assert_eq!(grouped[0].name, "users");
         let user_columns: Vec<&str> = grouped[0].columns.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(user_columns, vec!["id", "email"]);
         assert_eq!(grouped[0].columns[0].data_type, "int4");
         assert_eq!(grouped[1].name, "orders");
         assert_eq!(grouped[1].columns.len(), 1);
+    }
+
+    // AC-009, AC-011 - behavior (two tables that share a name in different schemas fold into TWO
+    // distinct entries, not one - the group key is (schema, table), not table alone)
+    #[test]
+    fn should_keep_same_named_tables_in_different_schemas_distinct() {
+        let rows = vec![
+            (Some("public".into()), "users".into(), "id".into(), "int4".into()),
+            (Some("analytics".into()), "users".into(), "id".into(), "int8".into()),
+        ];
+
+        let grouped = group_schema(rows);
+
+        assert_eq!(grouped.len(), 2);
+        assert_eq!(grouped[0].schema.as_deref(), Some("public"));
+        assert_eq!(grouped[1].schema.as_deref(), Some("analytics"));
+        assert_eq!(grouped[0].name, "users");
+        assert_eq!(grouped[1].name, "users");
+    }
+
+    // AC-002 - behavior (MySQL/SQLite rows carry no schema -> the entry's schema is None)
+    #[test]
+    fn should_leave_schema_none_when_grouping_rows_without_a_schema() {
+        let rows = vec![(None, "products".into(), "sku".into(), "text".into())];
+        let grouped = group_schema(rows);
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].schema, None);
+        assert_eq!(grouped[0].name, "products");
     }
 
     // AC-006 - behavior (empty input yields no tables, no panic)

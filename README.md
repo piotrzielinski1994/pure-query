@@ -64,7 +64,9 @@ The dev server runs on port 1431 (set in both `vite.config.ts` and `src-tauri/ta
 > user/password), and press **Connect** to open a real `sqlx` connection (Rust backend) and
 > replace that database's sidebar tables with the live catalog. Status shows as a toast + a coloured
 > dot on the database row. A database lists its tables only after a successful connect
-> (the live catalog); table leaves are never shown before connecting. Opening a table of a
+> (the live catalog); table leaves are never shown before connecting. A Postgres connection
+> groups its tables under their **schema** rows (`public`, `analytics`, ...); MySQL/SQLite have
+> no schema level and list tables flat. Opening a table of a
 > connected database fetches its real content (first 200 rows, NULL shown as `[NULL]`); each
 > column header shows its type plus `PK`/`NN` markers, clicking a header sorts the whole table
 > server-side (asc/desc/none), and a **Load more** footer pages in the next rows. The status bar
