@@ -61,8 +61,9 @@ describe("workspace routing", () => {
   // behavior (settings route renders its content)
   it("should still render the settings route content", async () => {
     renderApp("/settings");
+    // The settings route now hosts the Theme section (multi-theme feature).
     expect(
-      await screen.findByText(/configuration lives here/i),
+      await screen.findByRole("heading", { name: /^theme$/i }),
     ).toBeInTheDocument();
   });
 

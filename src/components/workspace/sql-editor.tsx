@@ -24,9 +24,13 @@ import {
 } from "@codemirror/autocomplete";
 import { classHighlighter } from "@lezer/highlight";
 import {
-  darculaChrome,
-  darculaHighlight,
+  makeSqlChrome,
+  makeSqlHighlight,
+  type EditorColors,
 } from "@/components/workspace/sql-editor-theme";
+import { useThemeOptional } from "@/lib/theme/theme-context";
+import { applyDefaults } from "@/lib/theme/overrides";
+import { DEFAULT_THEME_COLORS } from "@/lib/theme/theme-defaults";
 import type { DbEngine, TableSchema } from "@/lib/workspace/model";
 
 const dialects = {
@@ -228,6 +232,22 @@ export function SqlEditor({
   placeholder,
   defaultTable,
 }: SqlEditorProps) {
+  // Theme-driven editor colors. Outside a ThemeProvider (isolated subtree / tests) fall back to the
+  // built-in defaults. Stabilize the extensions on the color VALUES + mode (not object identity) so
+  // an equal-colors render reuses the same extensions and CodeMirror reconfigures in place (document
+  // preserved) on a real mode/color change rather than remounting.
+  const theme = useThemeOptional();
+  const effectiveColors =
+    theme?.effectiveColors ??
+    applyDefaults(
+      { light: { tokens: {}, editor: {} }, dark: { tokens: {}, editor: {} } },
+      DEFAULT_THEME_COLORS,
+    );
+  const effectiveMode = theme?.effectiveMode ?? "light";
+  const isDark = effectiveMode === "dark";
+  const editorColors = effectiveColors[effectiveMode].editor as EditorColors;
+  const colorsKey = `${effectiveMode}:${JSON.stringify(editorColors)}`;
+
   const extensions = useMemo<Extension[]>(() => {
     const { namespace, defaultSchema } = buildNamespace(schema);
     // The filter row is a WHERE on ONE table: complete only that table's columns. Match by name
@@ -247,9 +267,9 @@ export function SqlEditor({
         defaultTableColumns,
         defaultSchema,
       ),
-      syntaxHighlighting(darculaHighlight),
+      syntaxHighlighting(makeSqlHighlight(editorColors)),
       syntaxHighlighting(classHighlighter),
-      darculaChrome,
+      makeSqlChrome(editorColors, isDark),
       EditorView.contentAttributes.of({ "aria-label": ariaLabel }),
       ...(placeholder ? [cmPlaceholder(placeholder)] : []),
       ...(singleLine ? [EditorState.transactionFilter.of(blockNewlines)] : []),
@@ -276,6 +296,9 @@ export function SqlEditor({
         ]),
       ),
     ];
+    // editorColors/isDark are derived from colorsKey, so depending on the key is correct - the deps
+    // lint can't see through that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     engine,
     schema,
@@ -285,6 +308,7 @@ export function SqlEditor({
     ariaLabel,
     placeholder,
     defaultTable,
+    colorsKey,
   ]);
 
   return (

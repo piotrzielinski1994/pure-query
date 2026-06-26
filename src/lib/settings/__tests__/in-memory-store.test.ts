@@ -12,6 +12,7 @@ const nonDefaultSettings: Settings = {
   expandedIds: ["folder-staging", "db-admin"],
   openTabIds: ["db-admin", "tbl-accounts"],
   activeTabId: "tbl-accounts",
+  theme: DEFAULT_SETTINGS.theme,
 };
 
 describe("createInMemorySettingsStore", () => {

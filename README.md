@@ -93,8 +93,19 @@ The dev server runs on port 1431 (set in both `vite.config.ts` and `src-tauri/ta
 > "Toggle split layout" palette command).
 > Views/Script tabs remain mock. The sidebar tree + its connection configs persist in
 > `workspace.json`; UI/layout state (panel toggles, split orientation, expanded nodes, open
-> tabs) persists in `settings.json` - both JSON files in the OS app-config dir (via
-> `@tauri-apps/plugin-store`).
+> tabs) persists in `settings.json`; the theme **mode** also lives in `settings.json` while the
+> per-mode **color overrides** persist in a separate `theme.json` - all JSON files in the OS
+> app-config dir (via `@tauri-apps/plugin-store`).
+>
+> The app supports **multiple themes**: an appearance **mode** (Light / Dark / System - System
+> follows the OS `prefers-color-scheme` live) plus optional **per-mode color overrides** of the 18
+> app tokens + 9 editor-syntax tokens. Toggle the mode with **Cmd/Ctrl+Shift+L** (cycles
+> light -> dark -> system) or the "Toggle theme" palette command. The **`/settings`** route hosts a
+> Theme section: the mode buttons + a raw-JSON color editor (schema-validated, autocomplete + hover)
+> seeded with the full effective color set - edit a token to override it, set it back to the default
+> to clear it, save with the **Save** button or **Cmd/Ctrl+S** (only the sparse diff persists). The
+> SQL CodeMirror editor recolors live with the theme. The chosen mode toggles a `.dark` class on
+> `<html>` and overrides apply as inline CSS vars.
 
 ## Repo layout
 
@@ -108,12 +119,16 @@ src/
   components/
     workspace/          workspace shell: context/provider, sidebar tree, content tabs,
                         database card (SQL/Views/Script/Connection), table card, console,
-                        command palette (Cmd/Ctrl+K)
+                        command palette (Cmd/Ctrl+K), schema-intellisense (JSON-schema CM editor)
+    settings/           app-level settings UI: theme-section (mode buttons + JSON color editor)
     ui/                 shadcn primitives
   lib/                  tauri.ts (typed invoke wrappers), utils.ts (cn),
                         logging/ (file-log.ts: best-effort logMessage -> Rust file log),
-                        settings/ (UI-state JSON persistence: types + mergeSettings,
-                        tauri/in-memory stores, SettingsProvider),
+                        settings/ (UI-state + theme-mode JSON persistence: types + mergeSettings,
+                        settings.json/theme.json stores, SettingsProvider),
+                        theme/ (theme-defaults + mode/override helpers + ThemeProvider: .dark class
+                        + inline CSS vars + live OS-preference follow),
+                        config-schema/ (zod + zod-derived JSON schema for the color editor),
                         workspace/ (sidebar tree from workspace.json: types +
                         mergeWorkspace + hydrate/dehydrate, stores, WorkspaceStoreProvider)
   index.css             Tailwind v4 + theme tokens

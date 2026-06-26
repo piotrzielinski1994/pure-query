@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { SettingsProvider } from "@/lib/settings/settings-context";
 import { createTauriSettingsStore } from "@/lib/settings/tauri-store";
+import { ThemeProvider } from "@/lib/theme/theme-context";
 import { WorkspaceStoreProvider } from "@/lib/workspace/workspace-store-context";
 import { createTauriWorkspaceStore } from "@/lib/workspace/tauri-store";
 
@@ -11,9 +12,11 @@ function RootLayout() {
 
   return (
     <SettingsProvider store={settingsStore}>
-      <WorkspaceStoreProvider store={workspaceStore}>
-        <Outlet />
-      </WorkspaceStoreProvider>
+      <ThemeProvider>
+        <WorkspaceStoreProvider store={workspaceStore}>
+          <Outlet />
+        </WorkspaceStoreProvider>
+      </ThemeProvider>
     </SettingsProvider>
   );
 }
