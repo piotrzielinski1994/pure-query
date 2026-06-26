@@ -18,6 +18,13 @@ const nonDefaultSettings: Settings = {
   expandedIds: ["folder-staging", "db-admin"],
   openTabIds: ["db-admin", "tbl-accounts"],
   activeTabId: "tbl-accounts",
+  theme: {
+    mode: "dark",
+    colors: {
+      light: { tokens: {}, editor: {} },
+      dark: { tokens: {}, editor: {} },
+    },
+  },
 };
 
 // Renders the live settings as JSON and exposes a button to persist a target

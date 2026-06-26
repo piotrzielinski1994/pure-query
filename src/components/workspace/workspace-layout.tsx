@@ -9,6 +9,7 @@ import { Main } from "@/components/workspace/main";
 import { CommandPalette } from "@/components/workspace/command-palette";
 import { NewFolderDialog } from "@/components/workspace/new-folder-dialog";
 import { useWorkspace } from "@/components/workspace/workspace-context";
+import { useThemeToggle } from "@/lib/theme/theme-context";
 import { Toaster } from "@/components/ui/sonner";
 
 export function WorkspaceLayout() {
@@ -27,6 +28,7 @@ export function WorkspaceLayout() {
     saveLayout,
     accentColorFor,
   } = useWorkspace();
+  const toggleTheme = useThemeToggle();
   const isSplitView =
     activeNode?.kind === "database" && activeDatabaseTab === "sql";
   // The accent recolours the existing 1px borders by overriding the --border token (every divider/
@@ -55,6 +57,11 @@ export function WorkspaceLayout() {
         toggleConsole();
         return;
       }
+      if (event.shiftKey && event.key.toLowerCase() === "l") {
+        event.preventDefault();
+        toggleTheme();
+        return;
+      }
       if (event.key.toLowerCase() === "n") {
         event.preventDefault();
         if (event.shiftKey) {
@@ -77,6 +84,7 @@ export function WorkspaceLayout() {
     toggleSidebar,
     toggleConsole,
     addDatabase,
+    toggleTheme,
   ]);
 
   return (

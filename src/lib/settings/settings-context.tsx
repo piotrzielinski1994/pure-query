@@ -8,13 +8,18 @@ import {
   type ReactNode,
 } from "react";
 import {
+  DEFAULT_SETTINGS,
   type Settings,
   type SettingsStore,
+  type ThemeColors,
+  type ThemeMode,
 } from "@/lib/settings/settings";
 
 type SettingsContextValue = {
   settings: Settings;
   persist: (next: Settings) => void;
+  saveThemeMode: (mode: ThemeMode) => void;
+  saveThemeColors: (colors: ThemeColors) => void;
 };
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -47,9 +52,35 @@ export function SettingsProvider({ store, children }: SettingsProviderProps) {
     [store],
   );
 
+  const update = useCallback(
+    (mutate: (base: Settings) => Settings) => {
+      setSettings((current) => {
+        const next = mutate(current ?? DEFAULT_SETTINGS);
+        store.save(next);
+        return next;
+      });
+    },
+    [store],
+  );
+
+  const saveThemeMode = useCallback(
+    (mode: ThemeMode) =>
+      update((base) => ({ ...base, theme: { ...base.theme, mode } })),
+    [update],
+  );
+
+  const saveThemeColors = useCallback(
+    (colors: ThemeColors) =>
+      update((base) => ({ ...base, theme: { ...base.theme, colors } })),
+    [update],
+  );
+
   const value = useMemo<SettingsContextValue | null>(
-    () => (settings === null ? null : { settings, persist }),
-    [settings, persist],
+    () =>
+      settings === null
+        ? null
+        : { settings, persist, saveThemeMode, saveThemeColors },
+    [settings, persist, saveThemeMode, saveThemeColors],
   );
 
   if (value === null) {

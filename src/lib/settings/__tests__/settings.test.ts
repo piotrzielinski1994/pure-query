@@ -18,6 +18,13 @@ describe("DEFAULT_SETTINGS", () => {
       expandedIds: [],
       openTabIds: [],
       activeTabId: null,
+      theme: {
+        mode: "system",
+        colors: {
+          light: { tokens: {}, editor: {} },
+          dark: { tokens: {}, editor: {} },
+        },
+      },
     });
   });
 });
@@ -38,6 +45,13 @@ describe("mergeSettings", () => {
       expandedIds: ["folder-staging", "db-admin"],
       openTabIds: ["db-admin", "tbl-accounts"],
       activeTabId: "tbl-accounts",
+      theme: {
+        mode: "dark",
+        colors: {
+          light: { tokens: { primary: "oklch(0.55 0.22 27)" }, editor: {} },
+          dark: { tokens: {}, editor: { string: "oklch(0.74 0.15 60)" } },
+        },
+      },
     };
 
     expect(mergeSettings(DEFAULT_SETTINGS, full)).toEqual(full);
@@ -73,6 +87,13 @@ describe("mergeSettings", () => {
       expandedIds: [],
       openTabIds: [],
       activeTabId: null,
+      theme: {
+        mode: "system",
+        colors: {
+          light: { tokens: {}, editor: {} },
+          dark: { tokens: {}, editor: {} },
+        },
+      },
     });
     expect(merged).not.toHaveProperty("bogus");
     expect(merged).not.toHaveProperty("extra");

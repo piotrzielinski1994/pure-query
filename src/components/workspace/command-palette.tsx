@@ -1,4 +1,5 @@
 import { useWorkspace } from "@/components/workspace/workspace-context";
+import { useThemeToggle } from "@/lib/theme/theme-context";
 import {
   PALETTE_COMMANDS,
   type PaletteCommandId,
@@ -37,6 +38,7 @@ export function CommandPalette({
     toggleSidebar,
     toggleConsole,
   } = useWorkspace();
+  const toggleTheme = useThemeToggle();
 
   const cycleTab = (step: number) => {
     if (openTabIds.length === 0) {
@@ -66,6 +68,7 @@ export function CommandPalette({
     "toggle-split-orientation": toggleSplitOrientation,
     "toggle-sidebar": toggleSidebar,
     "toggle-console": toggleConsole,
+    "toggle-theme": toggleTheme,
   };
 
   const isSplitView =

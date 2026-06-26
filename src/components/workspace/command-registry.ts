@@ -8,7 +8,8 @@ export type PaletteCommandId =
   | "new-tab"
   | "toggle-split-orientation"
   | "toggle-sidebar"
-  | "toggle-console";
+  | "toggle-console"
+  | "toggle-theme";
 
 export type PaletteState = {
   openTabCount: number;
@@ -64,6 +65,12 @@ export const PALETTE_COMMANDS: readonly PaletteCommandDef[] = [
     id: "toggle-console",
     name: "Toggle console panel",
     hint: "Cmd/Ctrl+J",
+    when: () => true,
+  },
+  {
+    id: "toggle-theme",
+    name: "Toggle theme",
+    hint: "Cmd/Ctrl+Shift+L",
     when: () => true,
   },
 ];
