@@ -60,8 +60,6 @@ fn with_client(connection_id: &str) -> Result<MongoConn, String> {
         .ok_or_else(|| format!("not connected: no connection for id '{connection_id}'"))
 }
 
-const DEFAULT_DOC_LIMIT: i64 = 200;
-
 // Credentials are percent-encoded so an `@`/`:`/`/` in a user or password can't break the
 // `mongodb://user:pass@host:port/db` shape. Same set as the SQL URL builder.
 const CRED: &AsciiSet = &NON_ALPHANUMERIC

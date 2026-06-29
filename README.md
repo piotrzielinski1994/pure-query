@@ -3,7 +3,8 @@
 A minimal, keyboard-driven, fully configurable, desktop database client.
 
 Built as a Tauri 2 desktop app with a React 19 + TypeScript frontend on the TanStack
-stack (Router, Query, Table, Form, Hotkeys) and shadcn/ui + Tailwind v4.
+stack (Router, Query, Table, Form, Hotkeys), shadcn/ui + Tailwind v4, and dnd-kit for
+sidebar drag-and-drop.
 
 ## Prerequisites
 

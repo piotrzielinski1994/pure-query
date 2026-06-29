@@ -15,6 +15,14 @@ UI design rules for this app. Entries are about *visual language and interaction
 - Cursor signals affordance (`cursor-col-resize` / `cursor-row-resize`), not thickness.
 - Borders use the `border`/`border-border` token, 1px. Don't introduce heavier borders for emphasis - use background/spacing instead.
 
+## Drag-and-drop drop cues
+
+- The sidebar tree drag-and-drop (reparent/reorder) draws **transient** drop cues that are NOT structural dividers but still obey the 1px rule:
+  - **before/after** a row: a 1px primary line (`h-px bg-primary`, the `DropLine` in [src/components/workspace/tree-row.tsx](../src/components/workspace/tree-row.tsx)). Never the 2px `h-0.5` line requi uses - we pin it to `h-px`.
+  - **inside** a folder (or the empty-folder "Drop here" zone): a 1px inset ring (`ring-1 ring-inset ring-primary`), never a fill or a thicker border.
+  - the dragged row dims via dnd-kit's `isDragging` (`opacity-50`); the drag overlay is a square `bg-accent` chip (no `rounded-*`).
+- These are the only place a primary-colored 1px line/ring appears on hover/drag; they vanish on drop/cancel. Don't promote them to a permanent border or thicken them.
+
 ## Scrollbars
 
 - **One scrollbar everywhere: thin, square, semi-transparent, overlay, auto-hiding.** The Tauri app ships from one WebView on all platforms, so we draw the bar ourselves - never defer to the OS default (thick gray gutter on Windows/Linux).

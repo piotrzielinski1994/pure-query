@@ -58,6 +58,63 @@ describe("TableCard", () => {
     expect(screen.getByText("Linus")).toBeInTheDocument();
   });
 
+  // behavior (the LAST data row keeps its bottom border so the grid is closed at the bottom).
+  // Regression: a `last:border-0` Tailwind variant used to strip the last row's bottom line via
+  // the CSS :last-child cascade (which jsdom can't compute), so assert that override class is
+  // absent and the base `border-b` is present.
+  it("should keep a bottom border on the last data row", () => {
+    renderTable("tbl-users");
+    const dataRows = screen
+      .getAllByRole("row")
+      .filter((row) => row.querySelector("td") !== null);
+    const lastRow = dataRows[dataRows.length - 1];
+    expect(lastRow).toHaveClass("border-b");
+    expect(lastRow).not.toHaveClass("last:border-0");
+  });
+
+  // behavior (a row click selects the row in the grid)
+  it("should select a row when it is clicked", async () => {
+    const user = userEvent.setup();
+    renderTable("tbl-users");
+
+    const row = screen.getByText("ada@example.com").closest("tr") as HTMLElement;
+    await user.click(row);
+
+    expect(row).toHaveAttribute("aria-selected", "true");
+  });
+
+  // behavior (selection is positional, so it MUST clear when the row set changes - here a filter
+  // narrows the rows - otherwise a later bulk delete would hit the wrong records)
+  it("should clear the row selection when the rows change via a filter", async () => {
+    const user = userEvent.setup();
+    renderTable("tbl-users");
+
+    const adaRow = screen
+      .getByText("ada@example.com")
+      .closest("tr") as HTMLElement;
+    await user.click(adaRow);
+    expect(adaRow).toHaveAttribute("aria-selected", "true");
+
+    // Applying a filter rebuilds the row set -> indices now point elsewhere -> selection resets.
+    const filterInput = screen.getByRole("textbox", { name: /filter/i });
+    await user.type(filterInput, "Linus{Enter}");
+
+    const selectedRows = screen
+      .getAllByRole("row")
+      .filter((row) => row.getAttribute("aria-selected") === "true");
+    expect(selectedRows).toHaveLength(0);
+  });
+
+  // behavior (no row is pre-selected on mount, so a stray Delete can't remove row 0 before a click)
+  it("should not pre-select any row on mount", () => {
+    renderTable("tbl-users");
+
+    const selectedRows = screen
+      .getAllByRole("row")
+      .filter((row) => row.getAttribute("aria-selected") === "true");
+    expect(selectedRows).toHaveLength(0);
+  });
+
   // AC-015, E-6 — behavior (empty state for a table with no rows)
   it("should show a no-rows empty state for a table with no rows", () => {
     renderTable("tbl-empty");

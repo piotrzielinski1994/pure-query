@@ -23,6 +23,21 @@ import type {
   TableSchema,
   TreeNode,
 } from "@/lib/workspace/model";
+import {
+  moveNode as moveTreeNode,
+  moveNodes as moveTreeNodes,
+  type MoveTarget,
+} from "@/lib/workspace/move";
+import {
+  flattenSelectable,
+  rangeBetween,
+} from "@/lib/workspace/tree-select";
+import { insertNode } from "@/lib/workspace/tree-edit";
+
+// How a click adjusts the sidebar multi-selection: a plain click replaces it, a
+// Cmd/Ctrl click toggles one row, a Shift click selects the range from the
+// anchor to the clicked row over the visible (expanded) rows.
+export type SelectMode = "replace" | "toggle" | "range";
 
 export type DatabaseTab = "sql" | "views" | "script" | "settings" | "query";
 
@@ -107,11 +122,28 @@ type WorkspaceContextValue = {
   openNode: (id: string) => void;
   setActiveTab: (id: string) => void;
   closeTab: (id: string) => void;
+  closeOtherTabs: (keepId: string) => void;
   closeAllTabs: () => void;
   setDatabaseTab: (tab: DatabaseTab) => void;
   newTab: () => void;
-  addDatabase: () => void;
+  // Create a database (optionally inside a folder) and open its settings tab. No parentId = root.
+  addDatabase: (parentId?: string) => void;
   addFolder: (name: string) => void;
+  // Create a new folder (optionally inside a folder) and begin renaming it inline. No parentId = root.
+  createFolder: (parentId?: string) => void;
+  moveNode: (dragId: string, target: MoveTarget) => void;
+  moveNodes: (dragIds: string[], target: MoveTarget) => void;
+  // Inline rename of any tree node (folder or database). Empty/blank name is ignored.
+  renameNode: (id: string, name: string) => void;
+  // Which node is being renamed inline in the sidebar (null = none), plus its controls.
+  renamingNodeId: string | null;
+  beginRename: (id: string) => void;
+  cancelRename: () => void;
+  // Sidebar multi-selection of folders/databases (tables are never selectable). A plain click
+  // replaces it, Cmd/Ctrl toggles, Shift ranges from the anchor over the visible rows.
+  selectedIds: Set<string>;
+  selectInTree: (id: string, mode: SelectMode) => void;
+  clearSelection: () => void;
   renameDatabase: (id: string, name: string) => void;
   setDatabaseAccent: (id: string, color: string | null) => void;
   saveScript: (databaseId: string, name: string, sql: string) => boolean;
@@ -134,6 +166,7 @@ type WorkspaceContextValue = {
   clearSqlBuffer: (key: string) => void;
   accentColorFor: (id: string) => string | null;
   removeNode: (id: string) => void;
+  removeNodes: (ids: string[]) => void;
   setConnectionStatus: (id: string, status: ConnectionStatus) => void;
   setConnection: (id: string, config: ConnectionConfig) => void;
   removeConnection: (id: string) => void;
@@ -318,17 +351,22 @@ function removeNodeFromTree(nodes: TreeNode[], targetId: string): TreeNode[] {
     );
 }
 
-function renameNode(
+// Rename ANY node (folder or database) by id. Folders recurse into their children so a nested
+// target is still found.
+function renameNodeInTree(
   nodes: TreeNode[],
-  databaseId: string,
+  targetId: string,
   name: string,
 ): TreeNode[] {
   return nodes.map((node) => {
-    if (node.kind === "folder") {
-      return { ...node, children: renameNode(node.children, databaseId, name) };
-    }
-    if (node.kind === "database" && node.id === databaseId) {
+    if (node.id === targetId && node.kind !== "table") {
       return { ...node, name };
+    }
+    if (node.kind === "folder") {
+      return {
+        ...node,
+        children: renameNodeInTree(node.children, targetId, name),
+      };
     }
     return node;
   });
@@ -508,6 +546,14 @@ export function WorkspaceProvider({
   const [expandedIds, setExpandedIds] = useState(
     () => new Set(initialExpandedIds),
   );
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  // The shift-click anchor: the row a range extends from. Set by a replace/toggle click, reused by
+  // a following range click.
+  const [selectAnchorId, setSelectAnchorId] = useState<string | null>(null);
+  // The node currently being renamed inline in the sidebar (null = none).
+  const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null);
   const [openTabIds, setOpenTabIds] = useState<string[]>(
     initialOpenTabIds ?? (initialActiveTabId ? [initialActiveTabId] : []),
   );
@@ -622,6 +668,40 @@ export function WorkspaceProvider({
       });
     };
 
+    // Remove one or more tree nodes in a single pass: drop each from the tree, close any tab a
+    // removed database (or a database inside a removed folder) had open, and forget its connection.
+    // The single-row delete and the bulk multi-select delete both flow through here.
+    const removeNodes = (ids: string[]) => {
+      const removedDbIds = ids.flatMap((id) => {
+        const node = findNode(tree, id);
+        return node ? databaseIdsIn(node) : [id];
+      });
+      setTree((current) =>
+        ids.reduce((acc, id) => removeNodeFromTree(acc, id), current),
+      );
+      setSelectedIds((current) => {
+        if (ids.every((id) => !current.has(id))) {
+          return current;
+        }
+        const next = new Set(current);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      removedDbIds.forEach(closeTab);
+      if (removedDbIds.length > 0) {
+        setConnectionsMap((current) => {
+          const next = new Map(current);
+          removedDbIds.forEach((dbId) => next.delete(dbId));
+          return next;
+        });
+        setConnectionStatusMap((current) => {
+          const next = new Map(current);
+          removedDbIds.forEach((dbId) => next.delete(dbId));
+          return next;
+        });
+      }
+    };
+
     return {
       tree,
       consoleLines,
@@ -638,15 +718,28 @@ export function WorkspaceProvider({
       openNode,
       setActiveTab: setActiveTabId,
       closeTab,
+      closeOtherTabs: (keepId) => {
+        setOpenTabIds((current) =>
+          current.includes(keepId) ? [keepId] : current,
+        );
+        setActiveTabId((active) => (active === keepId ? active : keepId));
+      },
       closeAllTabs: () => {
         setOpenTabIds([]);
         setActiveTabId(null);
       },
       setDatabaseTab: setActiveDatabaseTab,
       newTab: () => {},
-      addDatabase: () => {
+      addDatabase: (parentId) => {
         const id = crypto.randomUUID();
-        setTree((current) => [...current, newDatabaseNode(id)]);
+        setTree((current) =>
+          parentId
+            ? insertNode(current, parentId, Number.MAX_SAFE_INTEGER, newDatabaseNode(id))
+            : [...current, newDatabaseNode(id)],
+        );
+        if (parentId) {
+          setExpandedIds((current) => new Set(current).add(parentId));
+        }
         setConnectionStatusMap((current) => new Map(current).set(id, "idle"));
         setOpenTabIds((current) =>
           current.includes(id) ? current : [...current, id],
@@ -659,8 +752,37 @@ export function WorkspaceProvider({
           ...current,
           newFolderNode(crypto.randomUUID(), name),
         ]),
+      createFolder: (parentId) => {
+        const id = crypto.randomUUID();
+        const folder = newFolderNode(id, "New folder");
+        setTree((current) =>
+          parentId
+            ? insertNode(current, parentId, Number.MAX_SAFE_INTEGER, folder)
+            : [...current, folder],
+        );
+        if (parentId) {
+          setExpandedIds((current) => new Set(current).add(parentId));
+        }
+        // Open the inline editor so the user names it immediately, requi-style.
+        setRenamingNodeId(id);
+      },
+      moveNode: (dragId, target) =>
+        setTree((current) => moveTreeNode(current, dragId, target)),
+      moveNodes: (dragIds, target) =>
+        setTree((current) => moveTreeNodes(current, dragIds, target)),
       renameDatabase: (id, name) =>
-        setTree((current) => renameNode(current, id, name)),
+        setTree((current) => renameNodeInTree(current, id, name)),
+      renameNode: (id, name) => {
+        if (name.trim() === "") {
+          setRenamingNodeId(null);
+          return;
+        }
+        setTree((current) => renameNodeInTree(current, id, name.trim()));
+        setRenamingNodeId(null);
+      },
+      renamingNodeId,
+      beginRename: (id) => setRenamingNodeId(id),
+      cancelRename: () => setRenamingNodeId(null),
       setDatabaseAccent: (id, color) =>
         setTree((current) => setAccentColor(current, id, color)),
       saveScript: (databaseId, name, sql) => {
@@ -715,23 +837,26 @@ export function WorkspaceProvider({
         const database = databaseId ? nodesById.get(databaseId) : undefined;
         return database?.kind === "database" ? database.accentColor : null;
       },
-      removeNode: (id) => {
-        const node = findNode(tree, id);
-        const removedDbIds = node ? databaseIdsIn(node) : [id];
-        setTree((current) => removeNodeFromTree(current, id));
-        removedDbIds.forEach(closeTab);
-        if (removedDbIds.length > 0) {
-          setConnectionsMap((current) => {
-            const next = new Map(current);
-            removedDbIds.forEach((dbId) => next.delete(dbId));
-            return next;
-          });
-          setConnectionStatusMap((current) => {
-            const next = new Map(current);
-            removedDbIds.forEach((dbId) => next.delete(dbId));
-            return next;
-          });
+      removeNode: (id) => removeNodes([id]),
+      removeNodes,
+      selectedIds,
+      selectInTree: (id, mode) => {
+        if (mode === "toggle") {
+          setSelectedIds((current) => toggleInSet(current, id));
+          setSelectAnchorId(id);
+          return;
         }
+        if (mode === "range" && selectAnchorId !== null) {
+          const ordered = flattenSelectable(tree, expandedIds);
+          setSelectedIds(new Set(rangeBetween(ordered, selectAnchorId, id)));
+          return;
+        }
+        setSelectedIds(new Set([id]));
+        setSelectAnchorId(id);
+      },
+      clearSelection: () => {
+        setSelectedIds(new Set());
+        setSelectAnchorId(null);
       },
       connectionStatus,
       connections,
@@ -785,6 +910,9 @@ export function WorkspaceProvider({
     tree,
     consoleLines,
     expandedIds,
+    selectedIds,
+    selectAnchorId,
+    renamingNodeId,
     openTabIds,
     activeTabId,
     activeDatabaseTab,
