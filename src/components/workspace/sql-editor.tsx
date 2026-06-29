@@ -13,6 +13,7 @@ import {
   SQLite,
   schemaCompletionSource,
 } from "@codemirror/lang-sql";
+import { json as jsonLanguage } from "@codemirror/lang-json";
 import {
   LanguageSupport,
   syntaxHighlighting,
@@ -122,6 +123,61 @@ function columnsInScopeSource(schema: TableSchema[]): CompletionSource {
 // qualified `schema.table` completion works and same-named tables across schemas don't collide.
 type SqlNamespace = Record<string, string[] | Record<string, string[]>>;
 
+// MongoDB Query-tab completion: after `db.` offer the connected collection names; after
+// `db.<collection>.` offer the read ops find/aggregate; INSIDE a find/aggregate body, just after a
+// `"` that opens a field key, offer that collection's sampled field names (from the schema). Field
+// VALUES / Mongo operators are not completed.
+function mongoCommandSource(
+  collections: string[],
+  schema: TableSchema[],
+): CompletionSource {
+  return (context) => {
+    const beforeCursor = context.state.sliceDoc(0, context.pos);
+    const afterCollection = beforeCursor.match(/db\.[\w$-]+\.(\w*)$/);
+    if (afterCollection) {
+      const word = context.matchBefore(/\w*$/);
+      return {
+        from: word ? word.from : context.pos,
+        options: [
+          { label: "find", type: "method" },
+          { label: "aggregate", type: "method" },
+        ],
+        validFor: /^\w*$/,
+      };
+    }
+    const afterDb = beforeCursor.match(/db\.([\w$-]*)$/);
+    if (afterDb) {
+      const word = context.matchBefore(/[\w$-]*$/);
+      return {
+        from: word ? word.from : context.pos,
+        options: collections.map((name) => ({ label: name, type: "class" })),
+        validFor: /^[\w$-]*$/,
+      };
+    }
+    // Inside the command body, after a quote opening a field key: offer the command's collection
+    // fields. The collection is the `db.<coll>.find|aggregate` in the buffer (one command here); the
+    // trailing `"` (no closing quote yet) marks a key position.
+    const fieldKey = beforeCursor.match(/"[\w$.]*$/);
+    if (fieldKey) {
+      const command = beforeCursor.match(/db\.([\w$-]+)\.(?:find|aggregate)\b/);
+      const table = schema.find((entry) => entry.name === command?.[1]);
+      if (!table) {
+        return null;
+      }
+      const word = context.matchBefore(/[\w$.]*$/);
+      return {
+        from: word ? word.from : context.pos,
+        options: table.columns.map((column) => ({
+          label: column.name,
+          type: "property",
+        })),
+        validFor: /^[\w$.]*$/,
+      };
+    }
+    return null;
+  };
+}
+
 // Builds SQL language support whose ONLY completions are schema tables/columns + curated keywords -
 // nothing from the dialect's full keyword dump. When `defaultTable` is set (the filter row, which
 // is a WHERE on ONE table), completion is scoped to that table's columns + keywords - no other
@@ -132,7 +188,21 @@ function buildSqlLanguage(
   namespace: SqlNamespace,
   defaultTableColumns: string[] | undefined,
   defaultSchema: string | undefined,
+  collections: string[],
 ) {
+  // MongoDB has no SQL: the filter row + Query tab edit JSON (a find document / aggregation
+  // pipeline). Use the JSON language for highlighting + a small command-skeleton completion source
+  // (collection names after `db.`, find/aggregate after `db.<coll>.`). Field-name completion is out
+  // of scope (no schema introspection for Mongo).
+  if (engine === "mongodb") {
+    const json = jsonLanguage();
+    return new LanguageSupport(json.language, [
+      json.support,
+      json.language.data.of({
+        autocomplete: mongoCommandSource(collections, schema),
+      }),
+    ]);
+  }
   const dialect = dialects[engine];
   // The filter row is a WHERE on one table - complete only its columns. The full editor offers
   // schema/table names (lang-sql) PLUS the columns of whatever tables the statement is FROM-ing
@@ -210,6 +280,8 @@ type SqlEditorProps = {
   // Scopes completion to ONE table's columns (the filter row's WHERE). Without it, completion
   // offers all tables + their columns (the SQL tab).
   defaultTable?: string;
+  // MongoDB only: the connected collection names, offered as completions after `db.`.
+  collections?: string[];
 };
 
 const SINGLE_LINE_SETUP: BasicSetupOptions = {
@@ -231,6 +303,7 @@ export function SqlEditor({
   ariaLabel = "SQL editor",
   placeholder,
   defaultTable,
+  collections,
 }: SqlEditorProps) {
   // Theme-driven editor colors. Outside a ThemeProvider (isolated subtree / tests) fall back to the
   // built-in defaults. Stabilize the extensions on the color VALUES + mode (not object identity) so
@@ -248,6 +321,9 @@ export function SqlEditor({
   const editorColors = effectiveColors[effectiveMode].editor as EditorColors;
   const colorsKey = `${effectiveMode}:${JSON.stringify(editorColors)}`;
 
+  // A stable key for the collection list so a same-content array doesn't rebuild the language; a
+  // real collection change does. Kept as a simple expression for the deps lint.
+  const collectionsKey = (collections ?? []).join(" ");
   const extensions = useMemo<Extension[]>(() => {
     const { namespace, defaultSchema } = buildNamespace(schema);
     // The filter row is a WHERE on ONE table: complete only that table's columns. Match by name
@@ -266,6 +342,7 @@ export function SqlEditor({
         namespace,
         defaultTableColumns,
         defaultSchema,
+        collections ?? [],
       ),
       syntaxHighlighting(makeSqlHighlight(editorColors)),
       syntaxHighlighting(classHighlighter),
@@ -308,6 +385,7 @@ export function SqlEditor({
     ariaLabel,
     placeholder,
     defaultTable,
+    collectionsKey,
     colorsKey,
   ]);
 

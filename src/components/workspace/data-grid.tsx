@@ -128,6 +128,7 @@ function DataGridImpl({
   onDeleteRow,
   onUndeleteRow,
   onCloneRow,
+  onEditDocument,
 }: {
   columns: string[];
   rows: Cell[][];
@@ -145,6 +146,9 @@ function DataGridImpl({
   onDeleteRow?: (rowIndex: number) => void;
   onUndeleteRow?: (rowIndex: number) => void;
   onCloneRow?: (rowIndex: number) => void;
+  // MongoDB only: open the whole row's document in a JSON editor (a nested object/array cell can't
+  // be edited inline). Absent for SQL grids, so no "Edit document" item shows there.
+  onEditDocument?: (rowIndex: number) => void;
 }) {
   const [editing, setEditing] = useState<{
     rowIndex: number;
@@ -258,9 +262,9 @@ function DataGridImpl({
           {grid.getRowModel().rows.map((row) => {
             const isDraft = isDraftRow?.(row.index) ?? false;
             const isDeleted = isDeletedRow?.(row.index) ?? false;
-            // Row context menu only when mutations are wired (onDeleteRow) and the row is a saved
-            // one - draft rows are discarded via the Changes tab, not a delete.
-            const hasRowMenu = Boolean(onDeleteRow) && !isDraft;
+            // Row context menu only when mutations are wired (onDeleteRow / onEditDocument) and the
+            // row is a saved one - draft rows are discarded via the Changes tab, not a delete.
+            const hasRowMenu = Boolean(onDeleteRow || onEditDocument) && !isDraft;
             const rowElement = (
               <tr
                 aria-selected={row.index === selectedRow}
@@ -348,15 +352,28 @@ function DataGridImpl({
                     </ContextMenuItem>
                   ) : (
                     <>
-                      <ContextMenuItem onSelect={() => onCloneRow?.(row.index)}>
-                        Clone
-                      </ContextMenuItem>
-                      <ContextMenuItem
-                        variant="destructive"
-                        onSelect={() => onDeleteRow?.(row.index)}
-                      >
-                        Delete
-                      </ContextMenuItem>
+                      {onEditDocument ? (
+                        <ContextMenuItem
+                          onSelect={() => onEditDocument(row.index)}
+                        >
+                          Edit document
+                        </ContextMenuItem>
+                      ) : null}
+                      {onCloneRow ? (
+                        <ContextMenuItem
+                          onSelect={() => onCloneRow(row.index)}
+                        >
+                          Clone
+                        </ContextMenuItem>
+                      ) : null}
+                      {onDeleteRow ? (
+                        <ContextMenuItem
+                          variant="destructive"
+                          onSelect={() => onDeleteRow(row.index)}
+                        >
+                          Delete
+                        </ContextMenuItem>
+                      ) : null}
                     </>
                   )}
                 </ContextMenuContent>

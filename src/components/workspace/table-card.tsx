@@ -37,6 +37,7 @@ import {
   useWorkspace,
   type PendingMutation,
 } from "@/components/workspace/workspace-context";
+import { queryPreview } from "@/components/workspace/query-preview";
 import type {
   ConnectionConfig,
   Sort,
@@ -47,92 +48,72 @@ import type {
 
 const EMPTY_SCHEMA: TableSchema[] = [];
 
-function quoteIdent(engine: ConnectionConfig["engine"], name: string): string {
-  return engine === "mysql"
-    ? `\`${name.replace(/`/g, "``")}\``
-    : `"${name.replace(/"/g, '""')}"`;
-}
-
-// Qualifies a table for the preview/History SQL strings so they match what the backend runs:
-// `"schema"."table"` for Postgres, bare quoted name otherwise. Mirrors the Rust `qualified_table`.
-function qualifiedIdent(
-  engine: ConnectionConfig["engine"],
-  schema: string | null,
-  table: string,
-): string {
-  return schema
-    ? `${quoteIdent(engine, schema)}.${quoteIdent(engine, table)}`
-    : quoteIdent(engine, table);
-}
-
-function quoteLiteral(value: Cell): string {
-  return value === null ? "NULL" : `'${value.replace(/'/g, "''")}'`;
-}
-
-function previewSql(
-  engine: ConnectionConfig["engine"],
-  schema: string | null,
-  table: string,
-  column: string,
-  newValue: Cell,
-  pkColumn: string,
-  pkValue: Cell,
-): string {
-  return `UPDATE ${qualifiedIdent(engine, schema, table)} SET ${quoteIdent(engine, column)} = ${quoteLiteral(newValue)} WHERE ${quoteIdent(engine, pkColumn)} = ${quoteLiteral(pkValue)}`;
-}
-
-function previewInsertSql(
-  engine: ConnectionConfig["engine"],
-  schema: string | null,
-  table: string,
-  values: Record<string, Cell>,
-): string {
-  const entries = Object.entries(values);
-  const columns = entries
-    .map(([column]) => quoteIdent(engine, column))
-    .join(", ");
-  const cells = entries
-    .map(([, value]) => quoteLiteral(value))
-    .join(", ");
-  return `INSERT INTO ${qualifiedIdent(engine, schema, table)} (${columns}) VALUES (${cells})`;
-}
-
-function previewDeleteSql(
-  engine: ConnectionConfig["engine"],
-  schema: string | null,
-  table: string,
-  pkColumn: string,
-  pkValue: Cell,
-): string {
-  return `DELETE FROM ${qualifiedIdent(engine, schema, table)} WHERE ${quoteIdent(engine, pkColumn)} = ${quoteLiteral(pkValue)}`;
-}
-
 const ROW_LIMIT = 200;
-
-function fetchSql(
-  engine: ConnectionConfig["engine"],
-  schema: string | null,
-  table: string,
-  filter: string | undefined,
-  sort: Sort | null,
-  limit: number,
-  offset: number,
-): string {
-  const where = filter ? ` WHERE (${filter})` : "";
-  const order = sort
-    ? ` ORDER BY ${quoteIdent(engine, sort.column)}${sort.descending ? " DESC" : ""}`
-    : "";
-  // "Load more" pages with OFFSET, so the logged SQL must carry it - otherwise every page reads as
-  // the same `LIMIT 200` query even though the backend skips the rows already fetched.
-  const offsetClause = offset > 0 ? ` OFFSET ${offset}` : "";
-  return `SELECT * FROM ${qualifiedIdent(engine, schema, table)}${where}${order} LIMIT ${limit}${offsetClause}`;
-}
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
   return typeof error === "string" ? error : JSON.stringify(error);
+}
+
+// MongoDB full-document editor: a JSON textarea + Save (disabled until the JSON parses to an
+// object). Save stages a `replace` mutation; the actual replaceOne runs on the table card's Save.
+function DocumentEditorDialog({
+  open,
+  value,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  value: string;
+  onChange: (text: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const parseError = (() => {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      const isObject =
+        typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+      return isObject ? null : "Document must be a JSON object";
+    } catch {
+      return "Document must be valid JSON";
+    }
+  })();
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => (next ? null : onClose())}>
+      <DialogContent onOpenAutoFocus={(event) => event.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle>Edit document</DialogTitle>
+          <DialogDescription>
+            Edit the whole document as JSON. Save replaces it (replaceOne) on
+            the next Save.
+          </DialogDescription>
+        </DialogHeader>
+        <textarea
+          aria-label="Document JSON"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          spellCheck={false}
+          className="h-72 w-full resize-none border bg-background p-2 font-mono text-xs outline-none"
+        />
+        {parseError ? (
+          <p className="font-mono text-xs text-destructive">{parseError}</p>
+        ) : null}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={onSave} disabled={parseError !== null}>
+            Stage replace
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function RecordView({
@@ -179,6 +160,7 @@ function TableView({
   onDeleteRow,
   onUndeleteRow,
   onCloneRow,
+  onEditDocument,
 }: {
   columns: string[];
   rows: Cell[][];
@@ -193,6 +175,7 @@ function TableView({
   onDeleteRow?: (rowIndex: number) => void;
   onUndeleteRow?: (rowIndex: number) => void;
   onCloneRow?: (rowIndex: number) => void;
+  onEditDocument?: (rowIndex: number) => void;
 }) {
   const [isRecordView, setIsRecordView] = useState(false);
   const [selectedRow, setSelectedRow] = useState(0);
@@ -263,6 +246,7 @@ function TableView({
       onDeleteRow={onDeleteRow}
       onUndeleteRow={onUndeleteRow}
       onCloneRow={onCloneRow}
+      onEditDocument={onEditDocument}
     />
   );
 }
@@ -293,6 +277,18 @@ function LiveTable({
   const [isSaving, setIsSaving] = useState(false);
   const [sort, setSort] = useState<Sort | null>(null);
   const [pageSize, setPageSize] = useState(ROW_LIMIT);
+  const isMongo = config.engine === "mongodb";
+  // The row whose full document is open in the JSON editor dialog (MongoDB only), or null.
+  const [editingDoc, setEditingDoc] = useState<{
+    rowIndex: number;
+    text: string;
+  } | null>(null);
+  // Per-engine preview/validation strategy: SQL strings for the SQL engines, db.coll.* strings +
+  // JSON filter for MongoDB. The fetch/edit/grid pipeline itself is engine-agnostic.
+  const preview = useMemo(
+    () => queryPreview(config.engine, schema),
+    [config.engine, schema],
+  );
 
   const sortKey = sort ? `${sort.column}:${sort.descending}` : "";
   // Monotonic sequence so every physical fetch logs a distinct history entry (the dedup in
@@ -312,7 +308,7 @@ function LiveTable({
     // (revisiting the tab) never calls queryFn, so it correctly logs nothing.
     queryFn: async ({ pageParam }) => {
       const offset = pageParam as number;
-      const querySql = fetchSql(config.engine, schema, tableName, filter, sort, pageSize, offset);
+      const querySql = preview.fetch(tableName, filter, sort, pageSize, offset);
       const seq = (fetchSeq.current += 1);
       try {
         const page = await fetchTable(connectionId, tableName, {
@@ -492,7 +488,7 @@ function LiveTable({
         upsertPendingEdit({
           ...insert,
           values,
-          sql: previewInsertSql(config.engine, schema, tableName, values),
+          sql: preview.insert(tableName, values),
         });
         return;
       }
@@ -514,15 +510,7 @@ function LiveTable({
         pkValue,
         oldValue: original,
         newValue: value,
-        sql: previewSql(
-          config.engine,
-          schema,
-          tableName,
-          column,
-          value,
-          primaryKey,
-          pkValue,
-        ),
+        sql: preview.update(tableName, column, value, primaryKey, pkValue),
       });
     },
     [
@@ -532,10 +520,9 @@ function LiveTable({
       rows,
       tableId,
       tableName,
-      schema,
       primaryKey,
       pkIndex,
-      config.engine,
+      preview,
       discardPendingEdit,
       upsertPendingEdit,
     ],
@@ -550,9 +537,9 @@ function LiveTable({
       tableId,
       tableName,
       values: {},
-      sql: previewInsertSql(config.engine, schema, tableName, {}),
+      sql: preview.insert(tableName, {}),
     });
-  }, [tableId, tableName, schema, config.engine, upsertPendingEdit]);
+  }, [tableId, tableName, preview, upsertPendingEdit]);
 
   const cloneRow = useCallback(
     (rowIndex: number) => {
@@ -575,10 +562,10 @@ function LiveTable({
         tableId,
         tableName,
         values,
-        sql: previewInsertSql(config.engine, schema, tableName, values),
+        sql: preview.insert(tableName, values),
       });
     },
-    [rows, columnNames, primaryKey, tableId, tableName, schema, config.engine, upsertPendingEdit],
+    [rows, columnNames, primaryKey, tableId, tableName, preview, upsertPendingEdit],
   );
 
   const deleteRow = useCallback(
@@ -601,7 +588,7 @@ function LiveTable({
         tableName,
         pkColumn: primaryKey,
         pkValue,
-        sql: previewDeleteSql(config.engine, schema, tableName, primaryKey, pkValue),
+        sql: preview.remove(tableName, primaryKey, pkValue),
       });
     },
     [
@@ -611,8 +598,7 @@ function LiveTable({
       tableEdits,
       tableId,
       tableName,
-      schema,
-      config.engine,
+      preview,
       discardPendingEdit,
       upsertPendingEdit,
     ],
@@ -640,9 +626,9 @@ function LiveTable({
   }
 
   const save = async () => {
-    const payload: RowMutation[] = tableEdits.flatMap(
-      (edit): RowMutation[] => {
-        if (edit.kind === "cell") {
+    const toPayload = (edit: PendingMutation): RowMutation[] => {
+      switch (edit.kind) {
+        case "cell":
           return [
             {
               kind: "cell",
@@ -651,15 +637,19 @@ function LiveTable({
               newValue: edit.newValue,
             },
           ];
-        }
-        if (edit.kind === "delete") {
+        case "delete":
           return [{ kind: "delete", pkValue: edit.pkValue }];
-        }
-        return Object.keys(edit.values).length > 0
-          ? [{ kind: "insert", values: edit.values }]
-          : [];
-      },
-    );
+        case "replace":
+          return [
+            { kind: "replace", pkValue: edit.pkValue, document: edit.document },
+          ];
+        case "insert":
+          return Object.keys(edit.values).length > 0
+            ? [{ kind: "insert", values: edit.values }]
+            : [];
+      }
+    };
+    const payload: RowMutation[] = tableEdits.flatMap(toPayload);
     const savedSqls = tableEdits
       .filter(
         (edit) => edit.kind !== "insert" || Object.keys(edit.values).length > 0,
@@ -698,6 +688,51 @@ function LiveTable({
     queryClient.invalidateQueries({ queryKey: ["table-count", tableId] });
   };
 
+  // Opens the whole row's document as pretty JSON in the editor dialog (MongoDB: a nested
+  // object/array cell can't be edited inline). A nested cell already holds compact JSON; a scalar
+  // cell holds its literal text, so each field is parsed back to a value where it parses.
+  const openDocEditor = (rowIndex: number) => {
+    const row = rows[rowIndex];
+    if (!row) {
+      return;
+    }
+    const document = Object.fromEntries(
+      columnNames.map((name, index) => {
+        const cell = row[index] ?? null;
+        if (cell === null) {
+          return [name, null];
+        }
+        try {
+          return [name, JSON.parse(cell)];
+        } catch {
+          return [name, cell];
+        }
+      }),
+    );
+    setEditingDoc({ rowIndex, text: JSON.stringify(document, null, 2) });
+  };
+
+  // Stages a `replace` mutation for the edited document, matched on its _id, applied on Save.
+  const saveDocEditor = () => {
+    if (!editingDoc || pkIndex < 0) {
+      return;
+    }
+    const pkValue = rows[editingDoc.rowIndex]?.[pkIndex] ?? null;
+    if (pkValue === null) {
+      return;
+    }
+    upsertPendingEdit({
+      kind: "replace",
+      id: `${tableId}:replace:${pkValue}`,
+      tableId,
+      tableName,
+      pkValue,
+      document: editingDoc.text,
+      sql: `db.${tableName}.replaceOne({ _id: ${JSON.stringify(pkValue)} }, ...)`,
+    });
+    setEditingDoc(null);
+  };
+
   return (
     <div className="flex h-full flex-col">
       <ScrollArea className="min-h-0 flex-1">
@@ -715,8 +750,18 @@ function LiveTable({
           onDeleteRow={editable ? deleteRow : undefined}
           onUndeleteRow={editable ? undeleteRow : undefined}
           onCloneRow={editable ? cloneRow : undefined}
+          onEditDocument={editable && isMongo ? openDocEditor : undefined}
         />
       </ScrollArea>
+      <DocumentEditorDialog
+        open={editingDoc !== null}
+        value={editingDoc?.text ?? ""}
+        onChange={(text) =>
+          setEditingDoc((current) => (current ? { ...current, text } : current))
+        }
+        onClose={() => setEditingDoc(null)}
+        onSave={saveDocEditor}
+      />
       <div className="flex h-9 shrink-0 items-stretch border-t bg-muted/30">
         <span className="flex items-center px-3 text-xs text-muted-foreground">
           {rows.length}
@@ -838,14 +883,18 @@ export function TableCard() {
   );
 
   const filter = appliedFilter.trim() ? appliedFilter.trim() : undefined;
-  // The filter is wrapped as a single `WHERE (<expr>)` clause. A semicolon would mean the user is
-  // trying to chain a second statement, which the filter is not - reject it up front with a clear
-  // message instead of letting it become a DB syntax error (defense-in-depth; the backend runs one
-  // prepared statement so it could never execute anyway).
-  const hasStatementBreak = filterText.includes(";");
+  const isMongo = config?.engine === "mongodb";
+  // The filter row's syntax is engine-specific: a SQL `WHERE` expression (a semicolon would be a
+  // second statement) or a MongoDB JSON find document. The per-engine strategy validates it up
+  // front so a malformed filter is a clear toast, not a DB syntax error. A mock (no config) keeps
+  // the legacy substring behaviour, so default to SQL there.
   const applyFilter = () => {
-    if (hasStatementBreak) {
-      toast.error("Filter is one SQL expression - remove the semicolon");
+    const filterError = queryPreview(
+      config?.engine ?? "postgres",
+      null,
+    ).validateFilter(filterText);
+    if (filterError) {
+      toast.error(filterError);
       return;
     }
     if (hasPendingEdits) {
@@ -881,7 +930,11 @@ export function TableCard() {
             singleLine
             ariaLabel="Filter rows"
             placeholder={
-              isLive ? "WHERE ... (raw SQL) - Enter to run" : "Filter..."
+              isLive
+                ? isMongo
+                  ? "{ } find filter (JSON) - Enter to run"
+                  : "WHERE ... (raw SQL) - Enter to run"
+                : "Filter..."
             }
             defaultTable={activeNode.name}
           />

@@ -43,6 +43,19 @@ const validSqliteDatabase: PersistedDatabase = {
   file: "/Users/me/data/app.sqlite",
 };
 
+// MongoDB persisted database: discrete network fields PLUS an optional uri override.
+const validMongoDatabase: PersistedDatabase = {
+  kind: "database",
+  id: "db-mongo",
+  name: "orders_mongo",
+  engine: "mongodb",
+  host: "localhost",
+  port: 27017,
+  database: "shop",
+  user: "app_user",
+  password: "m0ngo-pw",
+};
+
 describe("DEFAULT_WORKSPACE", () => {
   // AC-001 - behavior
   it("should expose the documented default shape with an empty tree", () => {
@@ -661,5 +674,90 @@ describe("SQLite persistence (TC-010)", () => {
     });
 
     expect(merged.tree).toEqual([validDatabase, validSqliteDatabase]);
+  });
+});
+
+describe("MongoDB persistence (TC-003)", () => {
+  // TC-003, AC-005 - behavior (a valid mongodb database is kept with its network fields)
+  it("should keep a valid mongodb database node carrying its network fields", () => {
+    const merged = mergeWorkspace({ version: 1, tree: [validMongoDatabase] });
+
+    expect(merged.tree).toEqual([validMongoDatabase]);
+  });
+
+  // TC-003, AC-002, AC-005 - behavior (an optional uri override survives merge)
+  it("should keep a mongodb database's uri override when present", () => {
+    const withUri = {
+      ...validMongoDatabase,
+      uri: "mongodb+srv://app_user:m0ngo-pw@cluster0.example.net/shop",
+    };
+    const merged = mergeWorkspace({ version: 1, tree: [withUri] });
+
+    expect(merged.tree).toEqual([withUri]);
+  });
+
+  // TC-003, AC-005, E-3 - behavior (a mongodb entry missing its host is dropped)
+  it("should drop a mongodb database node that is missing its host", () => {
+    const noHost = {
+      kind: "database",
+      id: "db-mongo",
+      name: "orders_mongo",
+      engine: "mongodb",
+      port: 27017,
+      database: "shop",
+      user: "app_user",
+      password: "m0ngo-pw",
+    };
+    const merged = mergeWorkspace({ version: 1, tree: [noHost] });
+
+    expect(merged.tree).toEqual([]);
+  });
+
+  // TC-003, AC-005, E-3 - behavior (a non-string uri is dropped, db otherwise intact)
+  it("should drop a non-string uri but keep the rest of the mongodb database", () => {
+    const merged = mergeWorkspace({
+      version: 1,
+      tree: [{ ...validMongoDatabase, uri: 42 }],
+    });
+
+    expect(merged.tree).toEqual([validMongoDatabase]);
+    expect(merged.tree[0]).not.toHaveProperty("uri");
+  });
+
+  // TC-003, AC-005 - behavior (a mongodb database round-trips through hydrate/dehydrate)
+  it("should round-trip a mongodb database through hydrate/dehydrate keeping its fields", () => {
+    const persisted: PersistedWorkspace = {
+      version: 1,
+      tree: [validMongoDatabase],
+    };
+
+    expect(dehydrate(hydrate(persisted.tree))).toEqual(persisted);
+  });
+
+  // TC-003, AC-002, AC-005 - behavior (a mongodb database with a uri round-trips keeping the uri)
+  it("should round-trip a mongodb database carrying a uri override", () => {
+    const persisted: PersistedWorkspace = {
+      version: 1,
+      tree: [
+        {
+          ...validMongoDatabase,
+          uri: "mongodb://app_user:m0ngo-pw@localhost:27017/shop?authSource=admin",
+        },
+      ],
+    };
+
+    expect(dehydrate(hydrate(persisted.tree))).toEqual(persisted);
+  });
+
+  // TC-003, AC-004 - behavior (a mongodb hydrated node exposes engine + network fields)
+  it("should hydrate a mongodb database into a runtime node carrying engine and fields", () => {
+    const [node] = hydrate([validMongoDatabase]);
+    const db = node as Extract<DatabaseNode, { engine: "mongodb" }>;
+
+    expect(db.kind).toBe("database");
+    expect(db.engine).toBe("mongodb");
+    expect(db.host).toBe("localhost");
+    expect(db.port).toBe(27017);
+    expect(db.database).toBe("shop");
   });
 });

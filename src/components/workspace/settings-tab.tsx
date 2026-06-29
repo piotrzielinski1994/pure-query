@@ -21,10 +21,12 @@ const ENGINE_LABELS: Record<DbEngine, string> = {
   postgres: "Postgres",
   mysql: "MySQL",
   sqlite: "SQLite",
+  mongodb: "MongoDB",
 };
 
-// The form holds a superset of both connection shapes so switching the engine never loses what
+// The form holds a superset of every connection shape so switching the engine never loses what
 // the user already typed; the live ConnectionConfig is projected per engine at connect time.
+// `uri` is the mongodb-only connection-string override.
 type ConnectionForm = {
   engine: DbEngine;
   host: string;
@@ -33,6 +35,7 @@ type ConnectionForm = {
   user: string;
   password: string;
   file: string;
+  uri: string;
 };
 
 function formFromNode(node: DatabaseNode): ConnectionForm {
@@ -43,9 +46,22 @@ function formFromNode(node: DatabaseNode): ConnectionForm {
     user: "",
     password: "",
     file: "",
+    uri: "",
   };
   if (node.engine === "sqlite") {
     return { ...base, engine: "sqlite", file: node.file };
+  }
+  if (node.engine === "mongodb") {
+    return {
+      ...base,
+      engine: "mongodb",
+      host: node.host,
+      port: node.port,
+      database: node.database,
+      user: node.user,
+      password: node.password,
+      uri: node.uri ?? "",
+    };
   }
   return {
     ...base,
@@ -61,6 +77,17 @@ function formFromNode(node: DatabaseNode): ConnectionForm {
 function configFromForm(form: ConnectionForm): ConnectionConfig {
   if (form.engine === "sqlite") {
     return { engine: "sqlite", file: form.file };
+  }
+  if (form.engine === "mongodb") {
+    return {
+      engine: "mongodb",
+      host: form.host,
+      port: form.port,
+      database: form.database,
+      user: form.user,
+      password: form.password,
+      ...(form.uri.trim() ? { uri: form.uri } : {}),
+    };
   }
   return {
     engine: form.engine,
@@ -243,15 +270,23 @@ function ConnectionForm({ node }: { node: DatabaseNode }) {
   const isConnected = connections.has(nodeId);
   const isConnecting = connectionStatus.get(nodeId) === "connecting";
   const isSqlite = form.engine === "sqlite";
+  const isMongo = form.engine === "mongodb";
 
   const update = <K extends keyof ConnectionForm>(
     key: K,
     value: ConnectionForm[K],
   ) => setForm((current) => ({ ...current, [key]: value }));
 
-  const isConnectable = isSqlite
-    ? form.file.length > 0
-    : form.host.length > 0 && form.database.length > 0 && form.user.length > 0;
+  const isConnectable = (() => {
+    if (isSqlite) {
+      return form.file.length > 0;
+    }
+    // Mongo connects with EITHER a non-empty uri (which overrides everything) OR host + database.
+    if (isMongo) {
+      return form.uri.trim().length > 0 || (form.host.length > 0 && form.database.length > 0);
+    }
+    return form.host.length > 0 && form.database.length > 0 && form.user.length > 0;
+  })();
 
   return (
     <div className="flex max-w-md flex-col gap-3 p-3">
@@ -275,6 +310,7 @@ function ConnectionForm({ node }: { node: DatabaseNode }) {
             <SelectItem value="postgres">Postgres</SelectItem>
             <SelectItem value="mysql">MySQL</SelectItem>
             <SelectItem value="sqlite">SQLite</SelectItem>
+            <SelectItem value="mongodb">MongoDB</SelectItem>
           </SelectContent>
         </Select>
       </Field>
@@ -332,6 +368,21 @@ function ConnectionForm({ node }: { node: DatabaseNode }) {
               onChange={(value) => update("password", value)}
             />
           </Field>
+          {isMongo ? (
+            <Field
+              label="Connection string (overrides fields)"
+              htmlFor="conn-uri"
+            >
+              <Input
+                id="conn-uri"
+                aria-label="Connection string"
+                value={form.uri}
+                onChange={(event) => update("uri", event.target.value)}
+                className="font-mono"
+                placeholder="mongodb+srv://..."
+              />
+            </Field>
+          ) : null}
         </>
       )}
       <div className="flex justify-end">

@@ -338,3 +338,93 @@ describe("SqlEditor", () => {
     expect(labels).not.toContain("select");
   });
 });
+
+describe("SqlEditor MongoDB completion", () => {
+  async function completionLabels(
+    container: HTMLElement,
+    doc: string,
+  ): Promise<string[]> {
+    const state = liveView(container).state;
+    const sources = state.languageDataAt<
+      (ctx: CompletionContext) => unknown
+    >("autocomplete", doc.length);
+    const ctx = new CompletionContext(state, doc.length, true);
+    const results = (await Promise.all(
+      sources.map((source) => source(ctx)),
+    )) as ({ options: { label: string }[] } | null)[];
+    return results.flatMap((result) =>
+      (result?.options ?? []).map((option) => option.label),
+    );
+  }
+
+  // behavior: after `db.` the editor completes the connected database's collection names.
+  it("should complete collection names after db.", async () => {
+    const doc = "db.u";
+    const { container } = render(
+      <SqlEditor
+        value={doc}
+        onChange={() => {}}
+        engine="mongodb"
+        schema={[]}
+        collections={["users", "orders", "events"]}
+      />,
+    );
+
+    const labels = await completionLabels(container, doc);
+    expect(labels).toContain("users");
+    expect(labels).toContain("orders");
+  });
+
+  // behavior: after `db.<collection>.` the editor completes the read operations find/aggregate.
+  it("should complete find and aggregate after a collection qualifier", async () => {
+    const doc = "db.users.";
+    const { container } = render(
+      <SqlEditor
+        value={doc}
+        onChange={() => {}}
+        engine="mongodb"
+        schema={[]}
+        collections={["users", "orders"]}
+      />,
+    );
+
+    const labels = await completionLabels(container, doc);
+    expect(labels).toContain("find");
+    expect(labels).toContain("aggregate");
+  });
+
+  // behavior: inside the find body, the editor completes the sampled field names of the command's
+  // collection (from the schema), not another collection's fields.
+  it("should complete field names of the command collection inside the find body", async () => {
+    const mongoSchema: TableSchema[] = [
+      {
+        schema: null,
+        name: "users",
+        columns: [
+          { name: "name", dataType: "" },
+          { name: "age", dataType: "" },
+        ],
+      },
+      {
+        schema: null,
+        name: "orders",
+        columns: [{ name: "total", dataType: "" }],
+      },
+    ];
+    const doc = 'db.users.find({ "';
+    const { container } = render(
+      <SqlEditor
+        value={doc}
+        onChange={() => {}}
+        engine="mongodb"
+        schema={mongoSchema}
+        collections={["users", "orders"]}
+      />,
+    );
+
+    const labels = await completionLabels(container, doc);
+    expect(labels).toContain("name");
+    expect(labels).toContain("age");
+    expect(labels).not.toContain("total");
+  });
+});

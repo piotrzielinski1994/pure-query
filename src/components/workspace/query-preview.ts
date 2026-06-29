@@ -1,0 +1,148 @@
+import type { ConnectionConfig, Sort } from "@/lib/workspace/model";
+
+type Cell = string | null;
+
+// A per-engine strategy for the History-log "what ran" strings and the filter-row validation.
+// The grid, paging, sort and Save pipeline are engine-agnostic; only these human-facing previews
+// and the filter syntax differ (SQL `WHERE` expression vs MongoDB JSON find filter), so they live
+// behind one strategy instead of `engine === ...` branches sprinkled through the table card.
+export type QueryPreview = {
+  fetch: (
+    table: string,
+    filter: string | undefined,
+    sort: Sort | null,
+    limit: number,
+    offset: number,
+  ) => string;
+  update: (
+    table: string,
+    column: string,
+    newValue: Cell,
+    pkColumn: string,
+    pkValue: Cell,
+  ) => string;
+  insert: (table: string, values: Record<string, Cell>) => string;
+  remove: (table: string, pkColumn: string, pkValue: Cell) => string;
+  // Validates the filter-row text. Returns an error message when invalid, or null when it can run.
+  validateFilter: (text: string) => string | null;
+  filterPlaceholder: string;
+};
+
+function quoteIdent(engine: ConnectionConfig["engine"], name: string): string {
+  return engine === "mysql"
+    ? `\`${name.replace(/`/g, "``")}\``
+    : `"${name.replace(/"/g, '""')}"`;
+}
+
+function qualifiedIdent(
+  engine: ConnectionConfig["engine"],
+  schema: string | null,
+  table: string,
+): string {
+  return schema
+    ? `${quoteIdent(engine, schema)}.${quoteIdent(engine, table)}`
+    : quoteIdent(engine, table);
+}
+
+function sqlLiteral(value: Cell): string {
+  return value === null ? "NULL" : `'${value.replace(/'/g, "''")}'`;
+}
+
+function sqlPreview(
+  engine: ConnectionConfig["engine"],
+  schema: string | null,
+): QueryPreview {
+  return {
+    fetch: (table, filter, sort, limit, offset) => {
+      const where = filter ? ` WHERE (${filter})` : "";
+      const order = sort
+        ? ` ORDER BY ${quoteIdent(engine, sort.column)}${sort.descending ? " DESC" : ""}`
+        : "";
+      const offsetClause = offset > 0 ? ` OFFSET ${offset}` : "";
+      return `SELECT * FROM ${qualifiedIdent(engine, schema, table)}${where}${order} LIMIT ${limit}${offsetClause}`;
+    },
+    update: (table, column, newValue, pkColumn, pkValue) =>
+      `UPDATE ${qualifiedIdent(engine, schema, table)} SET ${quoteIdent(engine, column)} = ${sqlLiteral(newValue)} WHERE ${quoteIdent(engine, pkColumn)} = ${sqlLiteral(pkValue)}`,
+    insert: (table, values) => {
+      const entries = Object.entries(values);
+      const columns = entries
+        .map(([column]) => quoteIdent(engine, column))
+        .join(", ");
+      const cells = entries.map(([, value]) => sqlLiteral(value)).join(", ");
+      return `INSERT INTO ${qualifiedIdent(engine, schema, table)} (${columns}) VALUES (${cells})`;
+    },
+    remove: (table, pkColumn, pkValue) =>
+      `DELETE FROM ${qualifiedIdent(engine, schema, table)} WHERE ${quoteIdent(engine, pkColumn)} = ${sqlLiteral(pkValue)}`,
+    // The filter is wrapped as a single `WHERE (<expr>)`; a `;` would be a second statement.
+    validateFilter: (text) =>
+      text.includes(";")
+        ? "Filter is one SQL expression - remove the semicolon"
+        : null,
+    filterPlaceholder: "WHERE ... (raw SQL) - Enter to run",
+  };
+}
+
+// Renders a cell as a MongoDB value for the preview strings: a value that parses as JSON is shown
+// as compact JSON (so `42` stays a number, `{"a":1}` a document); anything else is a quoted string
+// (mirrors the backend's JSON-literal-or-string interpretation). null -> `null`.
+function mongoLiteral(value: Cell): string {
+  if (value === null) {
+    return "null";
+  }
+  try {
+    return JSON.stringify(JSON.parse(value));
+  } catch {
+    return JSON.stringify(value);
+  }
+}
+
+function mongoPreview(): QueryPreview {
+  const idFilter = (pkValue: Cell) => `{ _id: ${mongoLiteral(pkValue)} }`;
+  return {
+    fetch: (collection, filter, sort, limit, offset) => {
+      const find = filter && filter.trim() ? filter.trim() : "{}";
+      const sortClause = sort
+        ? `.sort({ ${sort.column}: ${sort.descending ? -1 : 1} })`
+        : "";
+      const skipClause = offset > 0 ? `.skip(${offset})` : "";
+      return `db.${collection}.find(${find})${sortClause}${skipClause}.limit(${limit})`;
+    },
+    update: (collection, column, newValue, _pkColumn, pkValue) =>
+      `db.${collection}.updateOne(${idFilter(pkValue)}, { $set: { ${column}: ${mongoLiteral(newValue)} } })`,
+    insert: (collection, values) => {
+      const fields = Object.entries(values)
+        .map(([key, value]) => `${key}: ${mongoLiteral(value)}`)
+        .join(", ");
+      return `db.${collection}.insertOne({ ${fields} })`;
+    },
+    remove: (collection, _pkColumn, pkValue) =>
+      `db.${collection}.deleteOne(${idFilter(pkValue)})`,
+    // The filter is a MongoDB find document - it must be valid JSON (empty = match all).
+    validateFilter: (text) => {
+      const trimmed = text.trim();
+      if (trimmed === "") {
+        return null;
+      }
+      try {
+        const parsed: unknown = JSON.parse(trimmed);
+        const isObject =
+          typeof parsed === "object" &&
+          parsed !== null &&
+          !Array.isArray(parsed);
+        return isObject ? null : "Filter must be a JSON object";
+      } catch {
+        return "Filter must be valid JSON";
+      }
+    },
+    filterPlaceholder: '{ } find filter (JSON) - Enter to run',
+  };
+}
+
+// Picks the strategy for the engine. MongoDB gets the document-shaped previews + JSON filter; every
+// SQL engine shares the SQL strategy (quoting/qualification differ by engine, handled inside it).
+export function queryPreview(
+  engine: ConnectionConfig["engine"],
+  schema: string | null,
+): QueryPreview {
+  return engine === "mongodb" ? mongoPreview() : sqlPreview(engine, schema);
+}

@@ -1,6 +1,7 @@
 import { useWorkspace } from "@/components/workspace/workspace-context";
 import { Tab, TabBar } from "@/components/workspace/tab-bar";
-import { Database, Plus, Table, X } from "lucide-react";
+import { EngineIcon } from "@/components/workspace/engine-icon";
+import { Plus, Table, X } from "lucide-react";
 
 export function ContentHeader() {
   const {
@@ -31,7 +32,6 @@ export function ContentHeader() {
         if (!node) {
           return null;
         }
-        const Icon = node.kind === "database" ? Database : Table;
         return (
           <Tab
             key={id}
@@ -48,7 +48,11 @@ export function ContentHeader() {
               </button>
             }
           >
-            <Icon aria-hidden="true" className="size-3.5 shrink-0" />
+            {node.kind === "database" ? (
+              <EngineIcon engine={node.engine} className="size-3.5 shrink-0" />
+            ) : (
+              <Table aria-hidden="true" className="size-3.5 shrink-0" />
+            )}
             {node.name}
           </Tab>
         );

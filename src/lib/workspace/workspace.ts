@@ -30,9 +30,25 @@ export type PersistedSqliteDatabase = {
   savedScripts?: SavedScript[];
 };
 
+export type PersistedMongoDatabase = {
+  kind: "database";
+  id: string;
+  name: string;
+  engine: "mongodb";
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+  uri?: string;
+  accentColor?: string;
+  savedScripts?: SavedScript[];
+};
+
 export type PersistedDatabase =
   | PersistedNetworkDatabase
-  | PersistedSqliteDatabase;
+  | PersistedSqliteDatabase
+  | PersistedMongoDatabase;
 
 export type PersistedFolder = {
   kind: "folder";
@@ -124,6 +140,32 @@ function mergeDatabase(value: Record<string, unknown>): PersistedDatabase | null
       : null;
   }
   const { host, port, database, user, password } = value;
+  if (engine === "mongodb") {
+    if (
+      typeof host !== "string" ||
+      typeof port !== "number" ||
+      typeof database !== "string" ||
+      typeof user !== "string" ||
+      typeof password !== "string"
+    ) {
+      return null;
+    }
+    const uri = typeof value.uri === "string" ? { uri: value.uri } : undefined;
+    return {
+      kind: "database",
+      id,
+      name,
+      engine: "mongodb",
+      host,
+      port,
+      database,
+      user,
+      password,
+      ...uri,
+      ...accent,
+      ...scripts,
+    };
+  }
   if (
     typeof engine !== "string" ||
     !NETWORK_ENGINES.has(engine as DbEngine) ||
@@ -217,6 +259,18 @@ function hydrateNode(node: PersistedNode): TreeNode {
   if (node.engine === "sqlite") {
     return { ...runtime, engine: "sqlite", file: node.file };
   }
+  if (node.engine === "mongodb") {
+    return {
+      ...runtime,
+      engine: "mongodb",
+      host: node.host,
+      port: node.port,
+      database: node.database,
+      user: node.user,
+      password: node.password,
+      ...(node.uri !== undefined ? { uri: node.uri } : {}),
+    };
+  }
   return {
     ...runtime,
     engine: node.engine,
@@ -260,6 +314,24 @@ function dehydrateNode(node: TreeNode): PersistedNode[] {
         name: node.name,
         engine: "sqlite",
         file: node.file,
+        ...accent,
+        ...scripts,
+      },
+    ];
+  }
+  if (node.engine === "mongodb") {
+    return [
+      {
+        kind: "database",
+        id: node.id,
+        name: node.name,
+        engine: "mongodb",
+        host: node.host,
+        port: node.port,
+        database: node.database,
+        user: node.user,
+        password: node.password,
+        ...(node.uri !== undefined ? { uri: node.uri } : {}),
         ...accent,
         ...scripts,
       },

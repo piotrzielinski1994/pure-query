@@ -7,16 +7,22 @@ import { QueryWrapper } from "@/test/query-wrapper";
 import { WorkspaceProvider } from "@/components/workspace/workspace-context";
 import { DatabaseCard } from "@/components/workspace/database-card";
 import { fixtureTree } from "@/components/workspace/__tests__/fixtures";
-import type { ConnectionConfig } from "@/lib/workspace/model";
-import { connectDatabase } from "@/lib/tauri";
+import type {
+  ConnectionConfig,
+  DatabaseNode,
+  TreeNode,
+} from "@/lib/workspace/model";
+import { connectDatabase, executeMongo } from "@/lib/tauri";
 
 vi.mock("@/lib/tauri", () => ({
   connectDatabase: vi.fn(),
   fetchSchema: vi.fn(() => Promise.resolve([])),
-  fetchTable: vi.fn(),
-  countTable: vi.fn(),
+  fetchTable: vi.fn(() => Promise.resolve({ columns: [], rows: [], primaryKey: null })),
+  countTable: vi.fn(() => Promise.resolve(0)),
   applyRowMutations: vi.fn(),
-  executeSql: vi.fn(),
+  executeSql: vi.fn(() => Promise.resolve([])),
+  executeMongo: vi.fn(() => Promise.resolve([])),
+  cancelQuery: vi.fn(),
   disconnectDatabase: vi.fn(),
 }));
 
@@ -116,6 +122,114 @@ describe("DatabaseCard", () => {
     expect(
       screen.queryByRole("tablist", { name: /database sections|workbench/i }),
     ).not.toBeInTheDocument();
+  });
+});
+
+// A MongoDB database node fixture (connected, so the Query tab is live).
+function mongoNode(): DatabaseNode {
+  return {
+    kind: "database",
+    id: "db-mongo",
+    name: "orders_mongo",
+    accentColor: null,
+    engine: "mongodb",
+    host: "localhost",
+    port: 27017,
+    database: "shop",
+    user: "app_user",
+    password: "m0ngo-pw",
+    tables: [
+      {
+        kind: "table",
+        id: "db-mongo::orders",
+        name: "orders",
+        schema: null,
+        columns: [],
+        rows: [],
+      },
+    ],
+    views: [],
+    sql: "",
+    savedScripts: [],
+    script: "",
+    result: {
+      status: "success",
+      timeMs: 0,
+      rowCount: 0,
+      columns: [],
+      rows: [],
+      message: "",
+    },
+  };
+}
+
+function renderMongoCard() {
+  const tree: TreeNode[] = [mongoNode()];
+  const mongoConfig: ConnectionConfig = {
+    engine: "mongodb",
+    host: "localhost",
+    port: 27017,
+    database: "shop",
+    user: "app_user",
+    password: "m0ngo-pw",
+  };
+  return render(
+    <QueryWrapper>
+      <WorkspaceProvider
+        tree={tree}
+        initialActiveTabId="db-mongo"
+        initialConnections={[["db-mongo", mongoConfig]]}
+        initialConnectionStatus={[["db-mongo", "connected"]]}
+      >
+        <DatabaseCard />
+      </WorkspaceProvider>
+    </QueryWrapper>,
+  );
+}
+
+describe("DatabaseCard MongoDB engine (TC-012)", () => {
+  // TC-012, AC-010 - behavior (a mongodb database card shows only Query + Settings)
+  it("should expose only Query and Settings tabs for a mongodb database", () => {
+    renderMongoCard();
+    expect(screen.getByRole("tab", { name: "Query" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Views" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Script" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "SQL" })).toBeNull();
+  });
+
+  // TC-011, AC-009 - behavior (the Query tab IS the shared SQL editor pane: a JSON editor + Run +
+  // the same saved-script document tabs, NOT a bespoke picker/toggle)
+  it("should render the shared editor pane with a Run button in the Query tab", () => {
+    renderMongoCard();
+    expect(
+      screen.getByRole("textbox", { name: /sql editor/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^run$/i })).toBeInTheDocument();
+    // No bespoke Mongo controls - parity with the SQL tab.
+    expect(screen.queryByRole("button", { name: /aggregate/i })).toBeNull();
+  });
+
+  // TC-011, AC-009 - behavior (Run routes the buffer to executeMongo, NOT executeSql)
+  it("should invoke executeMongo with the editor buffer when Run is clicked", async () => {
+    const user = userEvent.setup();
+    const mockMongo = vi.mocked(executeMongo);
+    renderMongoCard();
+
+    const editor = screen.getByRole("textbox", { name: /sql editor/i });
+    await user.click(editor);
+    // `{`, `}`, `(`, `)` are userEvent.keyboard meta-chars - type them literally with [[ ]] / escapes.
+    await user.keyboard("db.users.find({{}})");
+    await user.click(screen.getByRole("button", { name: /^run$/i }));
+
+    await waitFor(() => {
+      expect(mockMongo).toHaveBeenCalledTimes(1);
+    });
+    expect(mockMongo).toHaveBeenCalledWith(
+      "db-mongo",
+      expect.stringContaining("db.users.find"),
+      expect.any(String),
+    );
   });
 });
 

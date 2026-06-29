@@ -14,7 +14,12 @@ import {
   selectedOrAllSql,
 } from "@/components/workspace/sql-editor";
 import { useWorkspace } from "@/components/workspace/workspace-context";
-import { cancelQuery, executeSql, type QueryOutcome } from "@/lib/tauri";
+import {
+  cancelQuery,
+  executeMongo,
+  executeSql,
+  type QueryOutcome,
+} from "@/lib/tauri";
 import type {
   DbEngine,
   SavedScript,
@@ -247,6 +252,11 @@ export function SqlTab() {
   }
 
   const isConnected = connections.has(activeNode.id);
+  // For MongoDB the live catalog leaves ARE the collections; offer them as `db.` completions.
+  const collections =
+    activeNode.engine === "mongodb"
+      ? activeNode.tables.map((table) => table.name)
+      : undefined;
   return (
     <SqlPane
       node={activeNode}
@@ -255,6 +265,7 @@ export function SqlTab() {
       engine={activeNode.engine}
       schema={databaseSchemas.get(activeNode.id) ?? EMPTY_SCHEMA}
       savedScripts={activeNode.savedScripts}
+      collections={collections}
       key={activeNode.id}
     />
   );
@@ -276,6 +287,7 @@ function SqlPane({
   engine,
   schema,
   savedScripts,
+  collections,
 }: {
   node: { id: string; sql: string };
   connectionId: string;
@@ -283,6 +295,7 @@ function SqlPane({
   engine: DbEngine;
   schema: TableSchema[];
   savedScripts: SavedScript[];
+  collections?: string[];
 }) {
   const {
     addHistoryEntry,
@@ -297,6 +310,7 @@ function SqlPane({
     setActiveScript,
     sqlBuffers,
     setSqlBuffer,
+    clearSqlBuffer,
   } = useWorkspace();
   const [isSaveOpen, setIsSaveOpen] = useState(false);
   const editorRef = useRef<EditorView | null>(null);
@@ -331,7 +345,11 @@ function SqlPane({
     mutationFn: (query: string) => {
       const requestId = crypto.randomUUID();
       requestIdRef.current = requestId;
-      return executeSql(connectionId, query, requestId);
+      // MongoDB and SQL share this pane; the command shape differs (db.coll.find(...) vs SQL) but
+      // both return QueryOutcome[] and both cancel via the same request id.
+      return engine === "mongodb"
+        ? executeMongo(connectionId, query, requestId)
+        : executeSql(connectionId, query, requestId);
     },
     onSuccess: (outcomes, query) =>
       // One History entry per statement so each is individually visible, each logging its OWN
@@ -413,15 +431,21 @@ function SqlPane({
     }
     const trimmed = name.trim();
     updateScript(node.id, activeScript, currentSql());
+    const previousName = activeScript;
     if (!renameScript(node.id, activeScript, trimmed)) {
       toast.error(`Script "${trimmed}" already exists`);
       return;
     }
+    // The renamed doc reads from the new key now; drop the old (e.g. `untitled`) draft so a later
+    // "+" reusing that name opens blank instead of inheriting this document's text.
+    clearSqlBuffer(`${node.id}::${previousName}`);
     setActiveScript(node.id, trimmed);
     toast.success(`Saved script "${trimmed}"`);
   };
   const removeScript = (name: string) => {
     deleteScript(node.id, name);
+    // Drop the deleted script's draft so a new document reusing the name doesn't inherit it.
+    clearSqlBuffer(`${node.id}::${name}`);
     if (activeScript === name) {
       const fallback = savedScripts.find((s) => s.name !== name);
       if (fallback) {
@@ -517,6 +541,7 @@ function SqlPane({
               onChange={setSql}
               engine={engine}
               schema={schema}
+              collections={collections}
               onSubmit={submit}
               onSave={save}
               onCreateEditor={(view) => {
