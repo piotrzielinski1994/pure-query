@@ -533,6 +533,34 @@ describe("SqlTab scripts toolbar", () => {
     expect(mockToast.success).toHaveBeenCalledWith('Saved script "answer"');
   });
 
+  // behavior (regression): after renaming an `untitled` in place, a fresh "+" `untitled` must be
+  // EMPTY - the renamed document's draft must not leak back into the reused name's buffer.
+  it("should open an empty editor for a new untitled after a previous untitled was renamed", async () => {
+    const user = userEvent.setup();
+    const { container } = renderSql({
+      tree: [databaseNode({ id: "db-a", savedScripts: [] })],
+      activeId: "db-a",
+      connected: true,
+    });
+
+    await screen.findByRole("tab", { name: "untitled" });
+    replaceDoc(liveView(container), "SELECT 42 AS answer");
+    const content = container.querySelector(".cm-content") as HTMLElement;
+    await user.click(content);
+    await user.keyboard("{Control>}s{/Control}");
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByRole("textbox"), "answer");
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    // New "+" untitled - reuses the freed "untitled" name; its editor must be blank.
+    await user.click(screen.getByRole("button", { name: /new script/i }));
+    await screen.findByRole("tab", { name: "untitled" });
+    expect(liveView(container)?.state.doc.toString()).toBe("");
+  });
+
   // AC-003 - side-effect-contract: naming an untitled with an already-taken name is rejected.
   it('should toast `Script "<name>" already exists` when the chosen name is taken', async () => {
     const user = userEvent.setup();

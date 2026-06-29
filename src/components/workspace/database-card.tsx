@@ -11,14 +11,24 @@ import {
   type DatabaseTab,
 } from "@/components/workspace/workspace-context";
 import { useConnectionActions } from "@/components/workspace/use-connection";
-import { connectionOf } from "@/lib/workspace/model";
+import { connectionOf, type DbEngine } from "@/lib/workspace/model";
 
-const SECTIONS: { id: DatabaseTab; label: string }[] = [
+const SQL_SECTIONS: { id: DatabaseTab; label: string }[] = [
   { id: "sql", label: "SQL" },
   { id: "views", label: "Views" },
   { id: "script", label: "Script" },
   { id: "settings", label: "Settings" },
 ];
+
+// MongoDB has no SQL/views/saved-scripts: its card is the JSON Query tab + Settings only.
+const MONGO_SECTIONS: { id: DatabaseTab; label: string }[] = [
+  { id: "query", label: "Query" },
+  { id: "settings", label: "Settings" },
+];
+
+function sectionsFor(engine: DbEngine) {
+  return engine === "mongodb" ? MONGO_SECTIONS : SQL_SECTIONS;
+}
 
 export function DatabaseCard() {
   const { activeNode, activeDatabaseTab, setDatabaseTab } = useWorkspace();
@@ -28,40 +38,50 @@ export function DatabaseCard() {
     return null;
   }
 
+  const sections = sectionsFor(activeNode.engine);
+  const isMongo = activeNode.engine === "mongodb";
+  // The persisted/default active tab is "sql"; for a Mongo card (no SQL tab) treat anything not in
+  // its section set as the Query tab so the card always has a valid active section.
+  const activeId = sections.some((section) => section.id === activeDatabaseTab)
+    ? activeDatabaseTab
+    : sections[0].id;
+
   return (
     <div className="flex h-full flex-col">
       <TabBar ariaLabel="Database sections">
-        {SECTIONS.map((section) => (
+        {sections.map((section) => (
           <Tab
             key={section.id}
-            isActive={activeDatabaseTab === section.id}
+            isActive={activeId === section.id}
             onSelect={() => setDatabaseTab(section.id)}
           >
             {section.label}
           </Tab>
         ))}
       </TabBar>
-      {/* SQL stays mounted (hidden when inactive) to preserve the CodeMirror editor + results;
-          the other panels mount lazily when selected. */}
+      {/* The editor pane stays mounted (hidden when inactive) to preserve the CodeMirror editor +
+          results; the other panels mount lazily when selected. SQL and MongoDB share ONE pane
+          (SqlTab) - the saved-script document tabs, Run/Cancel and History are identical; only the
+          per-engine executor + JSON-vs-SQL highlighting differ (driven by the node's engine). */}
       <div
         className={cn(
           "min-h-0 flex-1",
-          activeDatabaseTab !== "sql" && "hidden",
+          activeId !== (isMongo ? "query" : "sql") && "hidden",
         )}
       >
         <SqlTab />
       </div>
-      {activeDatabaseTab === "views" ? (
+      {activeId === "views" ? (
         <ScrollArea className="min-h-0 flex-1">
           <ViewsTab />
         </ScrollArea>
       ) : null}
-      {activeDatabaseTab === "script" ? (
+      {activeId === "script" ? (
         <ScrollArea className="min-h-0 flex-1">
           <ScriptTab />
         </ScrollArea>
       ) : null}
-      {activeDatabaseTab === "settings" ? (
+      {activeId === "settings" ? (
         <ScrollArea className="min-h-0 flex-1">
           <SettingsTab />
         </ScrollArea>

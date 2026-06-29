@@ -24,7 +24,7 @@ import type {
   TreeNode,
 } from "@/lib/workspace/model";
 
-export type DatabaseTab = "sql" | "views" | "script" | "settings";
+export type DatabaseTab = "sql" | "views" | "script" | "settings" | "query";
 
 export type SplitOrientation = "horizontal" | "vertical";
 
@@ -56,10 +56,19 @@ export type DeleteMutation = MutationBase & {
   pkValue: string;
 };
 
+// MongoDB full-document replace: the edited document JSON, matched on its pk (_id). Staged like the
+// other mutations and applied via replaceOne on Save.
+export type ReplaceMutation = MutationBase & {
+  kind: "replace";
+  pkValue: string;
+  document: string;
+};
+
 export type PendingMutation =
   | CellMutation
   | InsertMutation
-  | DeleteMutation;
+  | DeleteMutation
+  | ReplaceMutation;
 
 export type HistoryEntry = {
   id: string;
@@ -122,6 +131,7 @@ type WorkspaceContextValue = {
   // saved sql is what persists to workspace.json (on Cmd/Ctrl+S).
   sqlBuffers: Map<string, string>;
   setSqlBuffer: (key: string, sql: string) => void;
+  clearSqlBuffer: (key: string) => void;
   accentColorFor: (id: string) => string | null;
   removeNode: (id: string) => void;
   setConnectionStatus: (id: string, status: ConnectionStatus) => void;
@@ -554,6 +564,20 @@ export function WorkspaceProvider({
       setSqlBuffers((current) => new Map(current).set(key, sql)),
     [],
   );
+  // Drops a script's in-memory draft so a later document reusing the same buffer key (e.g. a fresh
+  // "untitled" after the previous one was renamed) starts blank instead of inheriting stale text.
+  const clearSqlBuffer = useCallback(
+    (key: string) =>
+      setSqlBuffers((current) => {
+        if (!current.has(key)) {
+          return current;
+        }
+        const next = new Map(current);
+        next.delete(key);
+        return next;
+      }),
+    [],
+  );
   const setActiveScript = useCallback(
     (databaseId: string, name: string) =>
       setActiveScriptByDb((current) => new Map(current).set(databaseId, name)),
@@ -678,6 +702,7 @@ export function WorkspaceProvider({
       setActiveScript,
       sqlBuffers,
       setSqlBuffer,
+      clearSqlBuffer,
       accentColorFor: (id) => {
         const node = nodesById.get(id);
         if (!node) {
@@ -778,6 +803,7 @@ export function WorkspaceProvider({
     setActiveScript,
     sqlBuffers,
     setSqlBuffer,
+    clearSqlBuffer,
     upsertPendingEdit,
     discardPendingEdit,
     discardPendingEditsForTable,

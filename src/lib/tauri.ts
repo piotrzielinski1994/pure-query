@@ -81,7 +81,19 @@ export type DeleteMutation = {
   pkValue: string;
 };
 
-export type RowMutation = CellMutation | InsertMutation | DeleteMutation;
+// MongoDB full-document replace: the edited document as a JSON string, matched on its pk (_id).
+// Only the Mongo backend path interprets it; the SQL path rejects it.
+export type ReplaceMutation = {
+  kind: "replace";
+  pkValue: string;
+  document: string;
+};
+
+export type RowMutation =
+  | CellMutation
+  | InsertMutation
+  | DeleteMutation
+  | ReplaceMutation;
 
 export function applyRowMutations(
   connectionId: string,
@@ -118,6 +130,21 @@ export function executeSql(
 
 export function cancelQuery(requestId: string): Promise<void> {
   return invoke<void>("cancel_query", { requestId });
+}
+
+// Runs one or more `;`-separated MongoDB Query-tab commands (`db.<coll>.find({...})` /
+// `db.<coll>.aggregate([...])`), returning one outcome per command - same shape as executeSql, so
+// the SQL editor pane (saved-script tabs, Run/Cancel, History) drives both engines.
+export function executeMongo(
+  connectionId: string,
+  command: string,
+  requestId: string,
+): Promise<QueryOutcome[]> {
+  return invoke<QueryOutcome[]>("execute_mongo", {
+    connectionId,
+    command,
+    requestId,
+  });
 }
 
 // The Rust `connect_database` registers its cancel token under a `connect:`-namespaced key (see

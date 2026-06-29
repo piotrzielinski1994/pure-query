@@ -623,6 +623,130 @@ describe("SettingsTab accent color (TC-001, TC-002, TC-003)", () => {
   });
 });
 
+// A MongoDB database node: network fields PLUS an optional uri override.
+function mongoNode(uri?: string): DatabaseNode {
+  return {
+    kind: "database",
+    id: "db-mongo",
+    name: "orders_mongo",
+    accentColor: null,
+    engine: "mongodb",
+    host: "localhost",
+    port: 27017,
+    database: "shop",
+    user: "app_user",
+    password: "m0ngo-pw",
+    ...(uri !== undefined ? { uri } : {}),
+    tables: [],
+    views: [],
+    sql: "",
+    savedScripts: [],
+    script: "",
+    result: sqliteResult,
+  };
+}
+
+function renderMongoSettings(uri?: string) {
+  const tree: TreeNode[] = [mongoNode(uri)];
+  return render(
+    <WorkspaceProvider tree={tree} initialActiveTabId="db-mongo">
+      <SettingsTab />
+    </WorkspaceProvider>,
+  );
+}
+
+describe("SettingsTab MongoDB engine (TC-001, TC-002)", () => {
+  // TC-001, AC-001/AC-002 - behavior (mongo shows network fields + a Connection string field)
+  it("should show host/port/database/user/password plus a Connection string field when the engine is mongodb", () => {
+    renderMongoSettings();
+    expect(screen.getByRole("textbox", { name: /host/i })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /port/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: /database/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /user/i })).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Password", { exact: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: /connection string/i }),
+    ).toBeInTheDocument();
+  });
+
+  // TC-001, AC-002 - behavior (mongo seeds the default port 27017)
+  it("should seed the default mongodb port 27017 from the node", () => {
+    renderMongoSettings();
+    expect(screen.getByRole("textbox", { name: /port/i })).toHaveValue("27017");
+  });
+
+  // TC-001, AC-002 - behavior (the uri override is seeded from the node when present)
+  it("should seed the Connection string field from the node uri when present", () => {
+    renderMongoSettings("mongodb://app_user:m0ngo-pw@localhost:27017/shop?authSource=admin");
+    expect(
+      screen.getByRole("textbox", { name: /connection string/i }),
+    ).toHaveValue("mongodb://app_user:m0ngo-pw@localhost:27017/shop?authSource=admin");
+  });
+
+  // TC-002, AC-003 - behavior (host+database set -> Connect enabled even with an empty uri)
+  it("should enable Connect when host and database are set and the uri is empty", () => {
+    renderMongoSettings();
+    expect(screen.getByRole("button", { name: /^connect$/i })).toBeEnabled();
+  });
+
+  // TC-002, AC-003 - behavior (empty host AND empty uri -> Connect disabled)
+  it("should disable Connect when both host and uri are empty", async () => {
+    const user = userEvent.setup();
+    renderMongoSettings();
+
+    await user.clear(screen.getByRole("textbox", { name: /host/i }));
+
+    expect(screen.getByRole("button", { name: /^connect$/i })).toBeDisabled();
+  });
+
+  // TC-002, AC-003 - behavior (a uri alone enables Connect even with no host)
+  it("should enable Connect when only the uri is set", async () => {
+    const user = userEvent.setup();
+    renderMongoSettings();
+
+    await user.clear(screen.getByRole("textbox", { name: /host/i }));
+    await user.clear(screen.getByRole("textbox", { name: /database/i }));
+    await user.type(
+      screen.getByRole("textbox", { name: /connection string/i }),
+      "mongodb://h/db",
+    );
+
+    expect(screen.getByRole("button", { name: /^connect$/i })).toBeEnabled();
+  });
+
+  // TC-001, AC-001 - behavior (the engine selector shows MongoDB)
+  it("should show MongoDB in the engine selector for a mongodb node", () => {
+    renderMongoSettings();
+    expect(screen.getByRole("combobox")).toHaveTextContent(/mongodb/i);
+  });
+
+  // TC-002, AC-002 - behavior (Connect sends the mongodb engine + fields + uri to the backend)
+  it("should invoke connectDatabase with the mongodb engine and its fields when Connect is clicked", async () => {
+    const user = userEvent.setup();
+    mockConnect.mockResolvedValueOnce([{ schema: null, name: "users" }]);
+    renderMongoSettings("mongodb://app_user:m0ngo-pw@localhost:27017/shop");
+
+    await user.click(screen.getByRole("button", { name: /^connect$/i }));
+
+    expect(mockConnect).toHaveBeenCalledWith(
+      "db-mongo",
+      expect.objectContaining({
+        engine: "mongodb",
+        host: "localhost",
+        port: 27017,
+        database: "shop",
+        user: "app_user",
+        password: "m0ngo-pw",
+        uri: "mongodb://app_user:m0ngo-pw@localhost:27017/shop",
+      }),
+    );
+  });
+});
+
 describe("SettingsTab engine switch keeps both shapes (TC-011)", () => {
   // TC-011, AC-002, E-5 - behavior (a postgres node renders its typed network values)
   it("should keep the postgres network values when rendering a postgres node", () => {

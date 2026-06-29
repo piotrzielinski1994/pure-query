@@ -66,6 +66,24 @@ pub async fn cancel_query(request_id: String) {
     }
 }
 
+// Registers a fresh cancellation token under `request_id` and returns it, so a sibling module
+// (the Mongo path) can make its own runs cancellable through the SAME registry that `cancel_query`
+// fires - the connect "Cancel" button works identically for both engines. The caller must
+// `unregister_cancel_token` on every exit (success/error/cancel) to avoid leaking an entry.
+pub fn register_cancel_token(request_id: &str) -> CancellationToken {
+    let token = CancellationToken::new();
+    CANCELS
+        .lock()
+        .unwrap()
+        .insert(request_id.to_string(), token.clone());
+    token
+}
+
+// Removes a token registered by `register_cancel_token`. A no-op for an unknown id.
+pub fn unregister_cancel_token(request_id: &str) {
+    CANCELS.lock().unwrap().remove(request_id);
+}
+
 // Splits a buffer into individual statements on top-level `;`, leaving a `;` inside a string
 // literal, quoted identifier, comment, or Postgres dollar-quote untouched. Each statement is
 // trimmed; blank and comment-only statements are dropped. Char-scanned with a tiny lexer state so a
@@ -1425,6 +1443,12 @@ pub enum RowMutation {
     Delete {
         pk_value: String,
     },
+    // MongoDB full-document replace (the edited document as a JSON string). Only the Mongo path
+    // interprets it; the SQL `build_mutation` rejects it as unrepresentable.
+    Replace {
+        pk_value: String,
+        document: String,
+    },
 }
 
 fn column_types_query(engine: DbEngine, has_schema: bool) -> String {
@@ -1589,6 +1613,10 @@ fn build_mutation(
         RowMutation::Delete { pk_value } => {
             Ok(build_delete_query(engine, schema, table, pk_column, pk_value))
         }
+        // A full-document replace is a MongoDB-only mutation; no SQL engine can express it.
+        RowMutation::Replace { .. } => {
+            Err("replace is only supported for MongoDB collections".to_string())
+        }
     }
 }
 
@@ -1596,14 +1624,34 @@ fn build_mutation(
 mod tests {
     use super::{
         assemble_columns, build_count_query, build_delete_query, build_insert_query,
-        build_rows_query, build_update_query, build_update_query_value, build_url, cancel_query,
-        catalog_query, column_types_query, columns_query, group_schema, is_row_returning,
-        is_subquery_wrappable, nullable_query, parse_json_rows, pk_regclass_bind,
+        build_mutation, build_rows_query, build_update_query, build_update_query_value, build_url,
+        cancel_query, catalog_query, column_types_query, columns_query, group_schema,
+        is_row_returning, is_subquery_wrappable, nullable_query, parse_json_rows, pk_regclass_bind,
         primary_key_query, qualified_table, quote_identifier, schema_query, split_sql_statements,
         with_pool, wrap_columns_probe, wrap_select_as_json, wrap_select_as_text, ConnectionConfig,
         DbEngine, RowMutation, Sort, CANCELS, CANCEL_SENTINEL,
     };
     use std::collections::HashMap;
+
+    // behavior (the full-document Replace mutation is MongoDB-only; the SQL builder must reject it
+    // rather than silently emit a wrong statement)
+    #[test]
+    fn should_reject_a_replace_mutation_on_the_sql_path() {
+        let mutation = RowMutation::Replace {
+            pk_value: "1".to_string(),
+            document: "{}".to_string(),
+        };
+        let result = build_mutation(
+            DbEngine::Postgres,
+            None,
+            "product",
+            "id",
+            &HashMap::new(),
+            &mutation,
+        );
+        assert!(result.is_err(), "SQL path must reject Replace");
+        assert!(result.unwrap_err().contains("MongoDB"));
+    }
 
     fn cols() -> Vec<String> {
         vec!["id".to_string(), "price".to_string()]

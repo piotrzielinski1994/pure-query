@@ -1,4 +1,5 @@
-import { ChevronDown, ChevronRight, Database, Table } from "lucide-react";
+import { ChevronDown, ChevronRight, Table } from "lucide-react";
+import { EngineIcon } from "@/components/workspace/engine-icon";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/components/workspace/workspace-context";
 import { useConnectionActions } from "@/components/workspace/use-connection";
@@ -171,7 +172,10 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
             >
               <Chevron className="size-3.5" />
             </button>
-            <Database className="size-3.5 shrink-0 text-muted-foreground" />
+            <EngineIcon
+              engine={node.engine}
+              className="size-3.5 shrink-0 text-muted-foreground"
+            />
             <span className="truncate">{node.name}</span>
             {dotColor ? (
               <span

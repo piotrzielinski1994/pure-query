@@ -59,9 +59,10 @@ The dev server runs on port 1431 (set in both `vite.config.ts` and `src-tauri/ta
 > and content|console splits are resizable. The sidebar toggles with `Cmd/Ctrl+B` and the
 > console panel with `Cmd/Ctrl+J` (also via palette commands).
 >
-> The **Settings** sub-tab is live: pick an engine (Postgres / MySQL / SQLite), edit the
+> The **Settings** sub-tab is live: pick an engine (Postgres / MySQL / SQLite / MongoDB), edit the
 > connection fields (SQLite shows a single "Database file" path field instead of host/port/
-> user/password), optionally assign an **accent color** (None / Green / Blue / Red presets, a
+> user/password; MongoDB adds a "Connection string (URI)" field that overrides the discrete
+> host/port/database/user/password when non-empty), optionally assign an **accent color** (None / Green / Blue / Red presets, a
 > native picker, or any hex) that recolors the whole shell's existing borders while that database
 > is active, as a prod-vs-test cue (persisted per database in `workspace.json`), and press **Connect** to open
 > a real `sqlx` connection (Rust backend) and replace that database's sidebar tables with the
@@ -107,6 +108,24 @@ The dev server runs on port 1431 (set in both `vite.config.ts` and `src-tauri/ta
 > SQL CodeMirror editor recolors live with the theme. The chosen mode toggles a `.dark` class on
 > `<html>` and overrides apply as inline CSS vars.
 
+> **MongoDB** is supported as a document engine alongside the SQL engines. A connected MongoDB
+> database lists its **collections** in the sidebar (flat, no schema level). Opening a collection
+> browses its documents in the same data grid: columns are the union of the sampled documents'
+> top-level fields with `_id` first (marked `PK`), a nested object/array shows as compact JSON in
+> its cell, and a field missing from a document shows `[NULL]`. The filter row takes a MongoDB
+> **find filter as JSON** (e.g. `{"age": {"$gt": 30}}`; an ObjectId `_id` is matched with Extended
+> JSON, e.g. `{"_id": {"$oid": "..."}}`). A MongoDB database card replaces the SQL/Views/Script tabs
+> with a single **Query** tab that reuses the **same editor pane as the SQL tab** - identical
+> saved-script document tabs (`+`, Cmd/Ctrl+S, untitled), Run/Cancel and History. Mongo commands are
+> self-contained `db.<collection>.find({...})` / `db.<collection>.aggregate([...])` (the collection
+> lives in the command like a SQL `FROM`, so there is no collection picker); multiple `;`-separated
+> commands run in order. Editing a scalar cell
+> stages an `updateOne $set` (the text is parsed as a JSON literal so number/bool/null types are
+> preserved); a row's context-menu **Edit document** opens the whole document as JSON for a
+> `replaceOne`; add/delete map to `insertOne`/`deleteOne`. The backend uses the official `mongodb`
+> crate in a separate `src-tauri/src/mongo.rs` module (the SQL engines run on `sqlx`); `lib.rs`
+> dispatches each command to the Mongo or SQL path by connection.
+
 ## Repo layout
 
 ```
@@ -118,8 +137,10 @@ src/
   routes/               __root (layout + 404), index (workspace home), settings
   components/
     workspace/          workspace shell: context/provider, sidebar tree, content tabs,
-                        database card (SQL/Views/Script/Connection), table card, console,
-                        command palette (Cmd/Ctrl+K), schema-intellisense (JSON-schema CM editor)
+                        database card (SQL/Views/Script/Connection; Query/Settings for MongoDB -
+                        Query reuses the SQL editor pane), table card, query-preview (per-engine
+                        preview/filter strategy), console, command palette (Cmd/Ctrl+K),
+                        schema-intellisense (JSON-schema CM editor)
     settings/           app-level settings UI: theme-section (mode buttons + JSON color editor)
     ui/                 shadcn primitives
   lib/                  tauri.ts (typed invoke wrappers), utils.ts (cn),
@@ -133,7 +154,9 @@ src/
                         mergeWorkspace + hydrate/dehydrate, stores, WorkspaceStoreProvider)
   index.css             Tailwind v4 + theme tokens
   test/setup.ts         Vitest + Testing Library setup
-src-tauri/              Rust desktop shell (greet command, logging.rs file logger, tauri.conf.json)
+src-tauri/              Rust desktop shell: db.rs (SQL engines via sqlx Any), mongo.rs (MongoDB
+                        via the mongodb crate), lib.rs (commands + per-connection SQL/Mongo
+                        dispatch), logging.rs file logger, tauri.conf.json
 tests/e2e/              Behavior smoke tests
 docs/                   spec/plan per feature, ADR, learnings, design.md
 ```

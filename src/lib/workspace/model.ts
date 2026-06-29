@@ -1,4 +1,4 @@
-export type DbEngine = "postgres" | "mysql" | "sqlite";
+export type DbEngine = "postgres" | "mysql" | "sqlite" | "mongodb";
 
 export type NetworkEngine = "postgres" | "mysql";
 
@@ -16,7 +16,23 @@ export type SqliteConnection = {
   file: string;
 };
 
-export type ConnectionConfig = NetworkConnection | SqliteConnection;
+// MongoDB carries the same host/port/database/user/password as the SQL network engines, PLUS an
+// optional `uri` that, when non-empty, overrides the discrete fields at connect time (replica
+// sets / Atlas / mongodb+srv). It is NOT a NetworkEngine because the uri field is mongo-only.
+export type MongoConnection = {
+  engine: "mongodb";
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+  uri?: string;
+};
+
+export type ConnectionConfig =
+  | NetworkConnection
+  | SqliteConnection
+  | MongoConnection;
 
 export type ConnectionStatus = "idle" | "connecting" | "connected" | "error";
 
@@ -97,11 +113,27 @@ export type NetworkDatabaseNode = DatabaseNodeBase & NetworkConnection;
 
 export type SqliteDatabaseNode = DatabaseNodeBase & SqliteConnection;
 
-export type DatabaseNode = NetworkDatabaseNode | SqliteDatabaseNode;
+export type MongoDatabaseNode = DatabaseNodeBase & MongoConnection;
+
+export type DatabaseNode =
+  | NetworkDatabaseNode
+  | SqliteDatabaseNode
+  | MongoDatabaseNode;
 
 export function connectionOf(node: DatabaseNode): ConnectionConfig {
   if (node.engine === "sqlite") {
     return { engine: "sqlite", file: node.file };
+  }
+  if (node.engine === "mongodb") {
+    return {
+      engine: "mongodb",
+      host: node.host,
+      port: node.port,
+      database: node.database,
+      user: node.user,
+      password: node.password,
+      ...(node.uri ? { uri: node.uri } : {}),
+    };
   }
   return {
     engine: node.engine,
