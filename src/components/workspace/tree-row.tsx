@@ -1,15 +1,20 @@
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Table } from "lucide-react";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { EngineIcon } from "@/components/workspace/engine-icon";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/components/workspace/workspace-context";
 import { useConnectionActions } from "@/components/workspace/use-connection";
 import { useRequestDelete } from "@/components/workspace/delete-request-context";
+import { useTreeDnd } from "@/components/workspace/tree-dnd";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { emptyZoneId } from "@/lib/workspace/tree-locate";
 import {
   connectionOf,
   type ConnectionStatus,
@@ -19,29 +24,210 @@ import {
   type TreeNode,
 } from "@/lib/workspace/model";
 
-function FolderRow({ node, depth }: { node: FolderNode; depth: number }) {
-  const { expandedIds, toggleExpand } = useWorkspace();
-  const requestDelete = useRequestDelete();
-  const isExpanded = expandedIds.has(node.id);
-  const Chevron = isExpanded ? ChevronDown : ChevronRight;
+// Inline rename editor for a tree row (ported from requi). Commits on Enter/blur, cancels on
+// Escape. Guards the freshly-mounted input against a radix-menu focus-teardown blur that would
+// otherwise instantly commit the default name.
+function RenameInput({ id, name }: { id: string; name: string }) {
+  const { renameNode, cancelRename } = useWorkspace();
+  const [value, setValue] = useState(name);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const doneRef = useRef(false);
+  const readyRef = useRef(false);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+    const settle = setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+      readyRef.current = true;
+    }, 0);
+    return () => clearTimeout(settle);
+  }, []);
+
+  const finish = (commit: boolean) => {
+    if (doneRef.current) {
+      return;
+    }
+    doneRef.current = true;
+    if (commit) {
+      renameNode(id, value);
+      return;
+    }
+    cancelRename();
+  };
 
   return (
-    <li>
+    <input
+      ref={inputRef}
+      aria-label="Rename"
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finish(true);
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          finish(false);
+        }
+      }}
+      onBlur={() => {
+        if (!readyRef.current) {
+          const el = inputRef.current;
+          setTimeout(() => {
+            el?.focus();
+            el?.select();
+          }, 0);
+          return;
+        }
+        finish(true);
+      }}
+      className="min-w-0 flex-1 border bg-background px-1 text-[13px] outline-none focus:border-primary"
+    />
+  );
+}
+
+// A draggable + droppable tree row (folder or database). The same element is both
+// the drag handle and the drop target, mirroring requi's tree. `indicator` flags
+// drive the transient drop cues (1px line / inset ring).
+function useRowDnd(id: string) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({ id });
+  const { setNodeRef: setDropRef } = useDroppable({ id });
+  const { indicator } = useTreeDnd();
+  const setNodeRef = (el: HTMLElement | null) => {
+    setDragRef(el);
+    setDropRef(el);
+  };
+  const dropBefore =
+    indicator?.overId === id && indicator.position === "before";
+  const dropAfter = indicator?.overId === id && indicator.position === "after";
+  const dropInside =
+    indicator?.overId === id && indicator.position === "inside";
+  return {
+    attributes,
+    listeners,
+    setNodeRef,
+    isDragging,
+    dropBefore,
+    dropAfter,
+    dropInside,
+  };
+}
+
+// A 1px primary line marking a before/after drop. Strict 1px (design.md): a drop
+// cue is transient, not a structural divider, but it stays 1px regardless.
+function DropLine() {
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="drop-line"
+      className="pointer-events-none h-px bg-primary"
+    />
+  );
+}
+
+// The selection mode a click implies: Cmd/Ctrl toggles one row, Shift ranges from the anchor, a
+// plain click replaces. (macOS uses metaKey, others ctrlKey.)
+function selectModeOf(event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) {
+  if (event.shiftKey) {
+    return "range" as const;
+  }
+  if (event.metaKey || event.ctrlKey) {
+    return "toggle" as const;
+  }
+  return "replace" as const;
+}
+
+function FolderRow({ node, depth }: { node: FolderNode; depth: number }) {
+  const {
+    expandedIds,
+    toggleExpand,
+    selectedIds,
+    selectInTree,
+    addDatabase,
+    createFolder,
+    renamingNodeId,
+    beginRename,
+  } = useWorkspace();
+  const { activeId } = useTreeDnd();
+  const requestDelete = useRequestDelete();
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    isDragging,
+    dropBefore,
+    dropAfter,
+    dropInside,
+  } = useRowDnd(node.id);
+  const isExpanded = expandedIds.has(node.id);
+  const Chevron = isExpanded ? ChevronDown : ChevronRight;
+  const isEmpty = node.children.length === 0;
+  const isDragActive = activeId !== null && activeId !== node.id;
+  const isSelected = selectedIds.has(node.id);
+  const isRenaming = renamingNodeId === node.id;
+
+  return (
+    <li className="relative">
+      {dropBefore && <DropLine />}
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
+            ref={setNodeRef}
+            {...attributes}
+            {...listeners}
             role="treeitem"
             aria-expanded={isExpanded}
+            aria-selected={isSelected}
             tabIndex={0}
-            onClick={() => toggleExpand(node.id)}
+            onClick={(event) => {
+              const mode = selectModeOf(event);
+              selectInTree(node.id, mode);
+              // A plain click also toggles the folder; a modifier click only adjusts the selection.
+              if (mode === "replace") {
+                toggleExpand(node.id);
+              }
+            }}
+            onDoubleClick={() => beginRename(node.id)}
             style={{ paddingLeft: `${depth * 14 + 6}px` }}
-            className="flex cursor-pointer items-center gap-1 py-1 pr-2 text-[13px] hover:bg-accent"
+            className={cn(
+              "flex cursor-pointer touch-none items-center gap-1 py-1 pr-2 text-[13px] hover:bg-accent",
+              isDragging && "opacity-50",
+              isSelected && "bg-accent",
+              dropInside && "ring-1 ring-inset ring-primary",
+            )}
           >
             <Chevron className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate">{node.name}</span>
+            {isRenaming ? (
+              <RenameInput id={node.id} name={node.name} />
+            ) : (
+              <span className="truncate">{node.name}</span>
+            )}
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent>
+          <ContextMenuItem onSelect={() => addDatabase(node.id)}>
+            New database
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => createFolder(node.id)}>
+            New folder
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => beginRename(node.id)}>
+            Rename
+          </ContextMenuItem>
+          <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
             onSelect={() => requestDelete(node)}
@@ -50,13 +236,47 @@ function FolderRow({ node, depth }: { node: FolderNode; depth: number }) {
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      {dropAfter && <DropLine />}
       {isExpanded ? (
         <ul role="group">
           {node.children.map((child) => (
             <TreeRow key={child.id} node={child} depth={depth + 1} />
           ))}
+          {isEmpty && isDragActive ? (
+            <EmptyDropZone folderId={node.id} depth={depth + 1} />
+          ) : null}
         </ul>
       ) : null}
+    </li>
+  );
+}
+
+function EmptyDropZone({
+  folderId,
+  depth,
+}: {
+  folderId: string;
+  depth: number;
+}) {
+  const zoneId = emptyZoneId(folderId);
+  const { setNodeRef } = useDroppable({ id: zoneId });
+  const { indicator } = useTreeDnd();
+  const isOver = indicator?.overId === zoneId;
+
+  return (
+    <li>
+      <div
+        ref={setNodeRef}
+        aria-hidden="true"
+        data-testid="empty-drop-zone"
+        style={{ paddingLeft: `${depth * 14 + 10}px` }}
+        className={cn(
+          "py-1 pr-2 text-[12px] italic text-muted-foreground",
+          isOver && "ring-1 ring-inset ring-primary",
+        )}
+      >
+        Drop here
+      </div>
     </li>
   );
 }
@@ -92,20 +312,35 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
     activeTabId,
     toggleExpand,
     openNode,
+    selectedIds,
+    selectInTree,
+    renamingNodeId,
+    beginRename,
     connectionStatus,
     setConnectionStatus,
     connections,
   } = useWorkspace();
   const { connect, disconnect, abortConnect } = useConnectionActions();
   const requestDelete = useRequestDelete();
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    isDragging,
+    dropBefore,
+    dropAfter,
+  } = useRowDnd(node.id);
   const isExpanded = expandedIds.has(node.id);
-  const isSelected = activeTabId === node.id;
+  // A row reads "selected" when it is the active tab OR part of the sidebar multi-selection, so the
+  // highlight stays consistent whether the user opened it or multi-picked it.
+  const isSelected = activeTabId === node.id || selectedIds.has(node.id);
   const Chevron = isExpanded ? ChevronDown : ChevronRight;
   const status = connectionStatus.get(node.id) ?? "idle";
   const dotColor = STATUS_DOT_COLOR[status];
   const isConnected = status === "connected";
   const isConnecting = status === "connecting";
   const hasConnection = connections.has(node.id);
+  const isRenaming = renamingNodeId === node.id;
 
   const toggleConnection = () => {
     if (hasConnection) {
@@ -138,16 +373,29 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
   };
 
   return (
-    <li>
+    <li className="relative">
+      {dropBefore && <DropLine />}
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
+            ref={setNodeRef}
+            {...attributes}
+            {...listeners}
             role="treeitem"
             aria-expanded={isExpanded}
             aria-selected={isSelected}
             aria-label={node.name}
             tabIndex={0}
-            onClick={() => openNode(node.id)}
+            onClick={(event) => {
+              const mode = selectModeOf(event);
+              selectInTree(node.id, mode);
+              // A plain click also opens the database tab; a modifier click only adjusts the
+              // selection (so the user can multi-pick without opening every row).
+              if (mode === "replace") {
+                openNode(node.id);
+              }
+            }}
+            onDoubleClick={() => beginRename(node.id)}
             style={{
               paddingLeft: `${depth * 14 + 6}px`,
               // Paint the accent bar as an inset shadow, not a border, so it sits on the row's left
@@ -157,18 +405,22 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
                 : {}),
             }}
             className={cn(
-              "flex cursor-pointer items-center gap-1 py-1 pr-2 text-[13px] hover:bg-accent",
+              "flex cursor-pointer touch-none items-center gap-1 py-1 pr-2 text-[13px] hover:bg-accent",
+              isDragging && "opacity-50",
               isSelected && "bg-accent",
             )}
           >
             <button
               type="button"
               aria-label={`Toggle ${node.name} tables`}
+              // Stop the pointerdown from starting a drag and the click from
+              // opening the database tab - the chevron only toggles tables.
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
                 toggleTables();
               }}
-              className="flex shrink-0 items-center rounded-sm text-muted-foreground hover:text-foreground"
+              className="flex shrink-0 items-center text-muted-foreground hover:text-foreground"
             >
               <Chevron className="size-3.5" />
             </button>
@@ -176,7 +428,11 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
               engine={node.engine}
               className="size-3.5 shrink-0 text-muted-foreground"
             />
-            <span className="truncate">{node.name}</span>
+            {isRenaming ? (
+              <RenameInput id={node.id} name={node.name} />
+            ) : (
+              <span className="truncate">{node.name}</span>
+            )}
             {dotColor ? (
               <span
                 role="img"
@@ -190,6 +446,11 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
           <ContextMenuItem onSelect={toggleConnection}>
             {hasConnection ? "Disconnect" : "Connect"}
           </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => beginRename(node.id)}>
+            Rename
+          </ContextMenuItem>
+          <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
             onSelect={() => requestDelete(node)}
@@ -198,6 +459,7 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      {dropAfter && <DropLine />}
       {isExpanded && isConnected ? (
         <ul role="group">
           {(() => {
@@ -218,7 +480,8 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
 }
 
 // `label` lets the database row pass a schema-qualified name (`schema.table`) for a multi-schema
-// Postgres database; it defaults to the bare table name everywhere else.
+// Postgres database; it defaults to the bare table name everywhere else. A table leaf is NOT
+// draggable and is never a drop target - it is an ephemeral live-catalog node, not a persisted one.
 function TableRow({
   node,
   depth,

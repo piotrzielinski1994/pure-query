@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 // One shared tab strip used by every tabbed surface (open content tabs, the database card's
@@ -32,28 +32,32 @@ export function TabBar({
   );
 }
 
-export function Tab({
-  isActive,
-  onSelect,
-  ariaLabel,
-  children,
-  trailing,
-  labelClassName,
-}: {
+type TabProps = {
   isActive: boolean;
   onSelect: () => void;
   ariaLabel?: string;
   children: ReactNode;
   trailing?: ReactNode;
   labelClassName?: string;
-}) {
+  // Extra props (e.g. a radix ContextMenuTrigger's onContextMenu + ref) spread onto the tab's
+  // outer element, so a tab can host a context menu without an extra wrapper div that would break
+  // the 1px active-underline overhang.
+} & ComponentPropsWithoutRef<"div">;
+
+export const Tab = forwardRef<HTMLDivElement, TabProps>(function Tab(
+  { isActive, onSelect, ariaLabel, children, trailing, labelClassName, className, ...rest },
+  ref,
+) {
   return (
     <div
+      ref={ref}
+      {...rest}
       className={cn(
         "flex h-full items-center border-r hover:bg-accent",
         isActive
           ? "-mb-px h-[calc(100%+1px)] bg-accent shadow-[inset_0_-1px_0_0_var(--primary)]"
           : "bg-transparent",
+        className,
       )}
     >
       {/* The label button fills the tab's full height + carries the horizontal padding, so the
@@ -77,4 +81,4 @@ export function Tab({
       {trailing ? <div className="pr-2">{trailing}</div> : null}
     </div>
   );
-}
+});

@@ -29,6 +29,8 @@ import type {
 
 const noop = () => {};
 const alwaysFalse = () => false;
+// Read-only SQL result grid: nothing is row-selectable (no row mutations), so a stable empty set.
+const NO_SELECTED_ROWS: Set<number> = new Set();
 
 const UNTITLED = "untitled";
 
@@ -137,7 +139,7 @@ function OutcomeGrid({ outcome }: { outcome: QueryOutcome }) {
         <DataGrid
           columns={outcome.columns}
           rows={rows}
-          selectedRow={-1}
+          selectedRows={NO_SELECTED_ROWS}
           onSelectRow={noop}
           editable={false}
           editValueAt={editValueAt}

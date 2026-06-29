@@ -14,7 +14,7 @@ function renderGrid(onEditDocument?: (rowIndex: number) => void) {
     <DataGrid
       columns={columns}
       rows={rows}
-      selectedRow={-1}
+      selectedRows={new Set()}
       onSelectRow={noop}
       editable
       editValueAt={(rowIndex, column) =>

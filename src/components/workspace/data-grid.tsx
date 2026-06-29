@@ -1,4 +1,12 @@
-import { Fragment, memo, useMemo, useState } from "react";
+import {
+  Fragment,
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import {
   createColumnHelper,
   flexRender,
@@ -12,10 +20,28 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { toCsv, toJson } from "@/lib/export";
+import { isEditableTarget } from "@/lib/workspace/is-editable-target";
+import type { RowSelectMode } from "@/lib/workspace/row-select";
 import type { Sort, TableColumn } from "@/lib/workspace/model";
+
+// Which selection mode a row click implies: Shift = range, Cmd/Ctrl = toggle, plain = replace.
+function rowSelectModeOf(event: {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+}): RowSelectMode {
+  if (event.shiftKey) {
+    return "range";
+  }
+  if (event.metaKey || event.ctrlKey) {
+    return "toggle";
+  }
+  return "replace";
+}
 
 export type Cell = string | null;
 type Row = Record<string, Cell>;
@@ -114,7 +140,7 @@ export function CopyButtons({
 function DataGridImpl({
   columns,
   rows,
-  selectedRow,
+  selectedRows,
   onSelectRow,
   editable,
   editValueAt,
@@ -126,14 +152,16 @@ function DataGridImpl({
   isDraftRow,
   isDeletedRow,
   onDeleteRow,
+  onDeleteRows,
   onUndeleteRow,
   onCloneRow,
   onEditDocument,
 }: {
   columns: string[];
   rows: Cell[][];
-  selectedRow: number;
-  onSelectRow: (index: number) => void;
+  // The set of selected row indices (multi-select via Cmd/Ctrl + Shift click).
+  selectedRows: Set<number>;
+  onSelectRow: (index: number, mode: RowSelectMode) => void;
   editable: boolean;
   editValueAt: (rowIndex: number, column: string) => Cell;
   isDirtyAt: (rowIndex: number, column: string) => boolean;
@@ -144,6 +172,9 @@ function DataGridImpl({
   isDraftRow?: (rowIndex: number) => boolean;
   isDeletedRow?: (rowIndex: number) => boolean;
   onDeleteRow?: (rowIndex: number) => void;
+  // Bulk-delete the given row indices (the current multi-selection). When present, the grid shows a
+  // "Delete N rows" item for a multi-selection and binds the Delete/Backspace key.
+  onDeleteRows?: (rowIndices: number[]) => void;
   onUndeleteRow?: (rowIndex: number) => void;
   onCloneRow?: (rowIndex: number) => void;
   // MongoDB only: open the whole row's document in a JSON editor (a nested object/array cell can't
@@ -154,6 +185,30 @@ function DataGridImpl({
     rowIndex: number;
     column: string;
   } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Delete/Backspace deletes the current multi-selection, but only when the grid (not a cell input
+  // or another surface) has focus, and only if bulk delete is wired (editable table card).
+  useEffect(() => {
+    if (!onDeleteRows) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") {
+        return;
+      }
+      if (isEditableTarget(event.target) || selectedRows.size === 0) {
+        return;
+      }
+      if (!containerRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      event.preventDefault();
+      onDeleteRows([...selectedRows]);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onDeleteRows, selectedRows]);
 
   const data = useMemo(
     () =>
@@ -186,7 +241,7 @@ function DataGridImpl({
   });
 
   return (
-    <div>
+    <div ref={containerRef} tabIndex={-1} className="outline-none">
       <table
         className="w-full border-collapse text-left text-sm"
         style={{ minWidth: grid.getTotalSize() }}
@@ -267,10 +322,12 @@ function DataGridImpl({
             const hasRowMenu = Boolean(onDeleteRow || onEditDocument) && !isDraft;
             const rowElement = (
               <tr
-                aria-selected={row.index === selectedRow}
-                onClick={() => onSelectRow(row.index)}
+                aria-selected={selectedRows.has(row.index)}
+                onClick={(event: MouseEvent) =>
+                  onSelectRow(row.index, rowSelectModeOf(event))
+                }
                 className={cn(
-                  "cursor-default border-b last:border-0 aria-selected:bg-accent",
+                  "cursor-default border-b aria-selected:bg-accent",
                   isDraft && "bg-emerald-500/10",
                   isDeleted && "line-through opacity-50",
                 )}
@@ -366,7 +423,19 @@ function DataGridImpl({
                           Clone
                         </ContextMenuItem>
                       ) : null}
-                      {onDeleteRow ? (
+                      {onDeleteRows &&
+                      selectedRows.has(row.index) &&
+                      selectedRows.size > 1 ? (
+                        <>
+                          {onDeleteRow ? <ContextMenuSeparator /> : null}
+                          <ContextMenuItem
+                            variant="destructive"
+                            onSelect={() => onDeleteRows([...selectedRows])}
+                          >
+                            {`Delete ${selectedRows.size} rows`}
+                          </ContextMenuItem>
+                        </>
+                      ) : onDeleteRow ? (
                         <ContextMenuItem
                           variant="destructive"
                           onSelect={() => onDeleteRow(row.index)}

@@ -11,26 +11,44 @@ import { Button } from "@/components/ui/button";
 import type { TreeNode } from "@/lib/workspace/model";
 
 type DeleteNodeDialogProps = {
-  node: TreeNode | null;
+  nodes: TreeNode[];
   onOpenChange: (open: boolean) => void;
-  onConfirm: (id: string) => void;
+  onConfirm: (ids: string[]) => void;
 };
 
+function describe(nodes: TreeNode[]): { title: string; body: string } {
+  if (nodes.length > 1) {
+    const hasFolder = nodes.some((node) => node.kind === "folder");
+    return {
+      title: `Delete ${nodes.length} items?`,
+      body: hasFolder
+        ? "This removes the selected connections and folders (and the databases inside them) from the workspace."
+        : "This removes the selected connections from the workspace.",
+    };
+  }
+  const node = nodes[0];
+  const isFolder = node?.kind === "folder";
+  return {
+    title: `Delete "${node?.name}"?`,
+    body: isFolder
+      ? "This removes the folder and the databases inside it from the workspace."
+      : "This removes the connection from the workspace.",
+  };
+}
+
 export function DeleteNodeDialog({
-  node,
+  nodes,
   onOpenChange,
   onConfirm,
 }: DeleteNodeDialogProps) {
-  const isFolder = node?.kind === "folder";
-  const body = isFolder
-    ? "This removes the folder and the databases inside it from the workspace."
-    : "This removes the connection from the workspace.";
+  const isOpen = nodes.length > 0;
+  const { title, body } = describe(nodes);
 
   return (
-    <Dialog open={node !== null} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>Delete "{node?.name}"?</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{body}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -43,7 +61,7 @@ export function DeleteNodeDialog({
           </Button>
           <Button
             type="button"
-            onClick={() => node && onConfirm(node.id)}
+            onClick={() => onConfirm(nodes.map((node) => node.id))}
             className={cn(
               "bg-red-600 text-white hover:bg-red-700",
               "dark:bg-red-600 dark:hover:bg-red-700",

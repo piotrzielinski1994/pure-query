@@ -34,6 +34,11 @@ import {
 } from "@/lib/tauri";
 import { toResult } from "@/lib/result";
 import {
+  nextRowSelection,
+  type RowSelectionState,
+  type RowSelectMode,
+} from "@/lib/workspace/row-select";
+import {
   useWorkspace,
   type PendingMutation,
 } from "@/components/workspace/workspace-context";
@@ -158,6 +163,7 @@ function TableView({
   isDraftRow,
   isDeletedRow,
   onDeleteRow,
+  onDeleteRows,
   onUndeleteRow,
   onCloneRow,
   onEditDocument,
@@ -173,12 +179,39 @@ function TableView({
   isDraftRow?: (rowIndex: number) => boolean;
   isDeletedRow?: (rowIndex: number) => boolean;
   onDeleteRow?: (rowIndex: number) => void;
+  onDeleteRows?: (rowIndices: number[]) => void;
   onUndeleteRow?: (rowIndex: number) => void;
   onCloneRow?: (rowIndex: number) => void;
   onEditDocument?: (rowIndex: number) => void;
 }) {
   const [isRecordView, setIsRecordView] = useState(false);
-  const [selectedRow, setSelectedRow] = useState(0);
+  const EMPTY_SELECTION = useMemo<RowSelectionState>(
+    () => ({ selected: new Set<number>(), anchor: null }),
+    [],
+  );
+  // Row selection is positional (indices into `rows`), so it's only valid for the exact row array
+  // it was made against. We stamp the selection with that array (`rowsRef`); when `rows` changes -
+  // sort, filter, paging, refetch - the stamp no longer matches and the selection reads as empty
+  // (no effect / no setState-in-effect needed). Empty by default: nothing is pre-selected, so a
+  // stray Delete can't nuke row 0 before any click.
+  const [stamped, setStamped] = useState<{
+    rows: Cell[][];
+    selection: RowSelectionState;
+  }>({ rows, selection: EMPTY_SELECTION });
+  const selection =
+    stamped.rows === rows ? stamped.selection : EMPTY_SELECTION;
+  const handleSelectRow = useCallback(
+    (index: number, mode: RowSelectMode) =>
+      setStamped((current) => ({
+        rows,
+        selection: nextRowSelection(
+          current.rows === rows ? current.selection : EMPTY_SELECTION,
+          index,
+          mode,
+        ),
+      })),
+    [rows, EMPTY_SELECTION],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -218,7 +251,8 @@ function TableView({
   );
 
   if (isRecordView && rows.length > 0) {
-    const index = Math.min(selectedRow, rows.length - 1);
+    // Record view focuses one row - the selection anchor (the last row clicked), clamped.
+    const index = Math.min(selection.anchor ?? 0, rows.length - 1);
     return (
       <RecordView
         columns={columns}
@@ -232,8 +266,8 @@ function TableView({
     <DataGrid
       columns={columns}
       rows={rows}
-      selectedRow={selectedRow}
-      onSelectRow={setSelectedRow}
+      selectedRows={selection.selected}
+      onSelectRow={handleSelectRow}
       editable={editable}
       editValueAt={editValueAt}
       isDirtyAt={isDirtyAt}
@@ -244,6 +278,7 @@ function TableView({
       isDraftRow={isDraftRow}
       isDeletedRow={isDeletedRow}
       onDeleteRow={onDeleteRow}
+      onDeleteRows={onDeleteRows}
       onUndeleteRow={onUndeleteRow}
       onCloneRow={onCloneRow}
       onEditDocument={onEditDocument}
@@ -604,6 +639,15 @@ function LiveTable({
     ],
   );
 
+  // Bulk delete: stage a delete mutation per selected row (each reversible via the Changes tab,
+  // exactly like a single delete).
+  const deleteRows = useCallback(
+    (rowIndices: number[]) => {
+      rowIndices.forEach((rowIndex) => deleteRow(rowIndex));
+    },
+    [deleteRow],
+  );
+
   const undeleteRow = useCallback(
     (rowIndex: number) => {
       if (pkIndex < 0) {
@@ -748,6 +792,7 @@ function LiveTable({
           isDraftRow={editable ? isDraftRow : undefined}
           isDeletedRow={editable ? isDeletedRow : undefined}
           onDeleteRow={editable ? deleteRow : undefined}
+          onDeleteRows={editable ? deleteRows : undefined}
           onUndeleteRow={editable ? undeleteRow : undefined}
           onCloneRow={editable ? cloneRow : undefined}
           onEditDocument={editable && isMongo ? openDocEditor : undefined}
