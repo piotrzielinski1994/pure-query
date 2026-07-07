@@ -37,6 +37,8 @@ UI design rules for this app. Entries are about *visual language and interaction
 - Headers always render, even for an empty result, so the column structure stays visible; show an empty-state message ("No rows.") beneath the header row, not instead of it.
 - NULL renders as a dim `[NULL]`, visually distinct from an empty string.
 - Edited/dirty cells get a subtle highlight (`bg-amber-500/15`), applied identically in every view (list and single-record).
+- Rows are `select-none`: click/Shift-click/Cmd-click select ROWS, and must never trigger the browser's native text selection (which would highlight cell text blue and fight range-select). An inline-edit `<input>` re-enables its own text selection, so editing is unaffected.
+- Copy CSV/JSON is not a footer button - it lives in the row context menu and copies the current selection (right-clicking a row outside the selection copies just that row). Both the editable table card and the read-only SQL result grid are row-selectable for this.
 
 ## Density & typography
 

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -114,10 +115,6 @@ type WorkspaceContextValue = {
   toggleSplitOrientation: () => void;
   layouts: Settings["layouts"];
   saveLayout: (group: PanelGroupKey, layout: PanelLayout) => void;
-  isSidebarVisible: boolean;
-  toggleSidebar: () => void;
-  isConsoleVisible: boolean;
-  toggleConsole: () => void;
   toggleExpand: (id: string) => void;
   openNode: (id: string) => void;
   setActiveTab: (id: string) => void;
@@ -182,6 +179,29 @@ type WorkspaceContextValue = {
 };
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
+
+// Chrome visibility (sidebar/console) lives in its OWN small context, split out of the big
+// workspace value on purpose: toggling it must NOT rebuild the workspace value (which every
+// content consumer - the heavy 200-row TableCard among them - subscribes to). A toggle rebuilds
+// only this tiny value, so the table subtree never re-renders on Cmd+B / Cmd+J.
+type ChromeContextValue = {
+  isSidebarVisible: boolean;
+  toggleSidebar: () => void;
+  isConsoleVisible: boolean;
+  toggleConsole: () => void;
+};
+
+const ChromeContext = createContext<ChromeContextValue | null>(null);
+
+// The JSON-view toggle is likewise isolated: only TableView reads it, and only it flips on Mod+
+// Shift+J, so keeping it out of the workspace value means neither a chrome toggle nor a JSON toggle
+// churns the other's subtree.
+type JsonViewContextValue = {
+  isJsonView: boolean;
+  toggleJsonView: () => void;
+};
+
+const JsonViewContext = createContext<JsonViewContextValue | null>(null);
 
 function indexNodes(nodes: TreeNode[]): Map<string, OpenNode> {
   const flatten = (node: TreeNode): OpenNode[] => {
@@ -505,6 +525,7 @@ type WorkspaceProviderProps = {
   initialConnectionStatus?: [string, ConnectionStatus][];
   initialSidebarHidden?: boolean;
   initialConsoleHidden?: boolean;
+  initialJsonView?: boolean;
   initialSplitOrientation?: SplitOrientation;
   initialLayouts?: Settings["layouts"];
   // The workspace persists only the UI-chrome slice of Settings; the theme is owned by the
@@ -524,6 +545,7 @@ export function WorkspaceProvider({
   initialConnectionStatus = [],
   initialSidebarHidden = false,
   initialConsoleHidden = false,
+  initialJsonView = false,
   initialSplitOrientation = "horizontal",
   initialLayouts = {},
   onPersist,
@@ -573,11 +595,19 @@ export function WorkspaceProvider({
   const [splitOrientation, setSplitOrientation] = useState<SplitOrientation>(
     initialSplitOrientation,
   );
-  const [layouts, setLayouts] = useState<Settings["layouts"]>(initialLayouts);
+  // Layouts are only ever READ as the `defaultLayout` seed at panel mount, never reactively - so
+  // the value exposes a STABLE seed (never setState) while the live layout lives in a ref that only
+  // saveLayout (an event handler) and the persist effect touch. react-resizable-panels fires
+  // onLayoutChanged (-> saveLayout) on every programmatic panel add/remove during a sidebar/console
+  // toggle; doing setState there would rebuild the workspace value and re-render the whole shell a
+  // second time per toggle (the measured lag). Ref + persist keeps the layout durable, zero render.
+  const [layoutsSeed] = useState(initialLayouts);
+  const layoutsRef = useRef<Settings["layouts"]>(initialLayouts);
   const [isSidebarVisible, setIsSidebarVisible] = useState(
     !initialSidebarHidden,
   );
   const [isConsoleVisible, setIsConsoleVisible] = useState(!initialConsoleHidden);
+  const [isJsonView, setIsJsonView] = useState(initialJsonView);
 
   // These actions are consumed by the heavy, memoized DataGrid (via table-card's commitEdit). They
   // use functional setters only, so they have no reactive deps - pinning their identity with
@@ -629,6 +659,29 @@ export function WorkspaceProvider({
       setActiveScriptByDb((current) => new Map(current).set(databaseId, name)),
     [],
   );
+  // saveLayout persists a panel-group layout WITHOUT setState (layouts are read only as the
+  // defaultLayout seed). It writes the ref and re-persists the full chrome payload, which it reads
+  // from persistPayloadRef (kept current by the render below) so this stays a stable useCallback
+  // with no reactive deps - a layout write never rebuilds the workspace value.
+  const persistPayloadRef = useRef<Omit<Settings, "theme" | "shortcuts"> | null>(
+    null,
+  );
+  const onPersistRef = useRef(onPersist);
+  useEffect(() => {
+    onPersistRef.current = onPersist;
+  }, [onPersist]);
+  const saveLayout = useCallback((group: PanelGroupKey, layout: PanelLayout) => {
+    const current = layoutsRef.current[group];
+    if (JSON.stringify(current) === JSON.stringify(layout)) {
+      return;
+    }
+    layoutsRef.current = { ...layoutsRef.current, [group]: layout };
+    const payload = persistPayloadRef.current;
+    if (payload && onPersistRef.current) {
+      onPersistRef.current({ ...payload, layouts: layoutsRef.current });
+    }
+  }, []);
+
   const clearHistory = useCallback(() => setHistory([]), []);
   const addHistoryEntry = useCallback(
     (entry: HistoryEntry) =>
@@ -898,15 +951,12 @@ export function WorkspaceProvider({
         setSplitOrientation((current) =>
           current === "horizontal" ? "vertical" : "horizontal",
         ),
-      layouts,
-      saveLayout: (group, layout) =>
-        setLayouts((current) => ({ ...current, [group]: layout })),
-      isSidebarVisible,
-      toggleSidebar: () => setIsSidebarVisible((current) => !current),
-      isConsoleVisible,
-      toggleConsole: () => setIsConsoleVisible((current) => !current),
+      layouts: layoutsSeed,
+      saveLayout,
     };
   }, [
+    layoutsSeed,
+    saveLayout,
     tree,
     consoleLines,
     expandedIds,
@@ -924,9 +974,6 @@ export function WorkspaceProvider({
     pendingEdits,
     history,
     splitOrientation,
-    layouts,
-    isSidebarVisible,
-    isConsoleVisible,
     activeScriptByDb,
     setActiveScript,
     sqlBuffers,
@@ -940,30 +987,59 @@ export function WorkspaceProvider({
     clearHistory,
   ]);
 
-  useEffect(() => {
-    if (!onPersist) {
-      return;
-    }
-    onPersist({
-      version: 1,
+  // Split-out chrome value: rebuilds ONLY when a visibility bool flips (functional-setter toggles
+  // are stable), so a sidebar/console toggle never rebuilds the big workspace value above.
+  const chromeValue = useMemo<ChromeContextValue>(
+    () => ({
+      isSidebarVisible,
+      toggleSidebar: () => setIsSidebarVisible((current) => !current),
+      isConsoleVisible,
+      toggleConsole: () => setIsConsoleVisible((current) => !current),
+    }),
+    [isSidebarVisible, isConsoleVisible],
+  );
+
+  const jsonViewValue = useMemo<JsonViewContextValue>(
+    () => ({
+      isJsonView,
+      toggleJsonView: () => setIsJsonView((current) => !current),
+    }),
+    [isJsonView],
+  );
+
+  // The current chrome payload, minus layouts (which saveLayout owns via layoutsRef). Kept in a ref
+  // so saveLayout can re-persist with the latest chrome without being a reactive dep.
+  const chromePayload = useMemo(
+    () => ({
+      version: 1 as const,
       sidebarHidden: !isSidebarVisible,
       consoleHidden: !isConsoleVisible,
       splitOrientation,
-      layouts,
+      layouts: layoutsSeed,
       expandedIds: [...expandedIds],
       openTabIds,
       activeTabId,
-    });
-  }, [
-    onPersist,
-    isSidebarVisible,
-    isConsoleVisible,
-    splitOrientation,
-    layouts,
-    expandedIds,
-    openTabIds,
-    activeTabId,
-  ]);
+    }),
+    [
+      isSidebarVisible,
+      isConsoleVisible,
+      splitOrientation,
+      layoutsSeed,
+      expandedIds,
+      openTabIds,
+      activeTabId,
+    ],
+  );
+
+  useEffect(() => {
+    // Persist with the LIVE layouts (ref), and stash the payload so saveLayout can re-persist chrome
+    // without a reactive dep. The payload's own `layouts` field (the seed) is overridden here.
+    const withLiveLayouts = { ...chromePayload, layouts: layoutsRef.current };
+    persistPayloadRef.current = withLiveLayouts;
+    if (onPersist) {
+      onPersist(withLiveLayouts);
+    }
+  }, [onPersist, chromePayload]);
 
   useEffect(() => {
     if (onTreeChange) {
@@ -973,7 +1049,11 @@ export function WorkspaceProvider({
 
   return (
     <WorkspaceContext.Provider value={value}>
-      {children}
+      <ChromeContext.Provider value={chromeValue}>
+        <JsonViewContext.Provider value={jsonViewValue}>
+          {children}
+        </JsonViewContext.Provider>
+      </ChromeContext.Provider>
     </WorkspaceContext.Provider>
   );
 }
@@ -984,4 +1064,23 @@ export function useWorkspace(): WorkspaceContextValue {
     throw new Error("useWorkspace must be used within a WorkspaceProvider");
   }
   return value;
+}
+
+export function useChrome(): ChromeContextValue {
+  const value = useContext(ChromeContext);
+  if (!value) {
+    throw new Error("useChrome must be used within a WorkspaceProvider");
+  }
+  return value;
+}
+
+// Optional so a component outside the provider (isolated test) still renders; the JSON view toggle
+// is only meaningful inside the workspace.
+export function useJsonView(): JsonViewContextValue {
+  return (
+    useContext(JsonViewContext) ?? {
+      isJsonView: false,
+      toggleJsonView: () => {},
+    }
+  );
 }

@@ -209,6 +209,33 @@ describe("WorkspaceLayout command palette", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  // behavior: "Close other tabs" leaves only the active tab open.
+  it("should close every other tab if 'Close other tabs' is selected", async () => {
+    const user = userEvent.setup();
+    render(
+      <WorkspaceProvider
+        tree={fixtureTree}
+        initialExpandedIds={["folder-staging"]}
+        initialConnectionStatus={[["db-admin", "connected"]]}
+      >
+        <WorkspaceLayout />
+      </WorkspaceProvider>,
+    );
+
+    await openSecondTab(user);
+    const openTabs = () =>
+      within(
+        screen.getByRole("tablist", { name: /open tabs/i }),
+      ).queryAllByRole("tab");
+    expect(openTabs()).toHaveLength(2);
+
+    openPalette();
+    await user.click(screen.getByText("Close other tabs"));
+
+    expect(openTabs()).toHaveLength(1);
+    expect(screen.getByRole("tab", { name: "accounts" })).toBeInTheDocument();
+  });
+
   // AC-009, TC-008, E-3 — side-effect-contract (next wraps to first)
   it("should activate the first tab if 'Next tab' is selected while the last is active", async () => {
     const user = userEvent.setup();

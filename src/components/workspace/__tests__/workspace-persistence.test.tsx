@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
+  useChrome,
   WorkspaceProvider,
   useWorkspace,
 } from "@/components/workspace/workspace-context";
@@ -24,8 +25,6 @@ const adminConnection: ConnectionConfig = {
 // on the onPersist side-effect contract.
 function WorkspaceProbe() {
   const {
-    isSidebarVisible,
-    isConsoleVisible,
     splitOrientation,
     layouts,
     saveLayout,
@@ -33,12 +32,16 @@ function WorkspaceProbe() {
     openTabIds,
     activeTabId,
     connections,
-    toggleSidebar,
-    toggleConsole,
     toggleSplitOrientation,
     toggleExpand,
     openNode,
   } = useWorkspace();
+  const {
+    isSidebarVisible,
+    isConsoleVisible,
+    toggleSidebar,
+    toggleConsole,
+  } = useChrome();
 
   return (
     <div>

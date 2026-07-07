@@ -7,13 +7,17 @@ import { WorkspaceProvider } from "@/components/workspace/workspace-context";
 import { TableCard } from "@/components/workspace/table-card";
 import { fixtureTree } from "@/components/workspace/__tests__/fixtures";
 
-function renderTable(activeTabId?: string) {
+function renderTable(activeTabId?: string, initialJsonView = false) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <WorkspaceProvider tree={fixtureTree} initialActiveTabId={activeTabId}>
+      <WorkspaceProvider
+        tree={fixtureTree}
+        initialActiveTabId={activeTabId}
+        initialJsonView={initialJsonView}
+      >
         <TableCard />
       </WorkspaceProvider>
     </QueryClientProvider>,
@@ -33,6 +37,29 @@ describe("TableCard", () => {
   it("should not show a Save button for a mock (non-connected) table", () => {
     renderTable("tbl-users");
     expect(screen.queryByRole("button", { name: /save/i })).toBeNull();
+  });
+
+  // AC-006 — behavior (JSON view is an independent toggle: when on, the grid is replaced by the
+  // JSON editor; the column-header grid is gone and the JSON aria-labelled editor is shown).
+  it("should render the JSON view instead of the grid when JSON view is on", () => {
+    renderTable("tbl-users", true);
+    expect(
+      screen.getByRole("textbox", { name: /rows as json/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: /email/i }),
+    ).toBeNull();
+  });
+
+  // AC-006 — behavior (toggle off: the grid is shown, not the JSON editor).
+  it("should render the grid not the JSON view when JSON view is off", () => {
+    renderTable("tbl-users", false);
+    expect(
+      screen.queryByRole("textbox", { name: /rows as json/i }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("columnheader", { name: /email/i }),
+    ).toBeInTheDocument();
   });
 
   // AC-015, TC-004 — behavior (content grid: a column header per table column)

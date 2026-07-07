@@ -31,6 +31,9 @@ export function makeSqlChrome(colors: EditorColors, isDark: boolean) {
         color: colors.gutter,
         border: "none",
       },
+      // Keep the fold gutter clickable but never show its arrows (incl. on hover), mirroring
+      // requi - the JSON view folds, but the chevron chrome stays hidden.
+      ".cm-foldGutter .cm-gutterElement": { opacity: "0" },
       ".cm-scroller": {
         fontFamily: "var(--font-mono, ui-monospace, monospace)",
       },

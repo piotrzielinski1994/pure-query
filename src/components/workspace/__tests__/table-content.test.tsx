@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { EditorView } from "@codemirror/view";
@@ -600,8 +600,8 @@ describe("TableCard pagination", () => {
     });
   });
 
-  // behavior (AC-007, TC-008: Copy CSV on the table card copies the loaded rows)
-  it("should copy the table-card rows to the clipboard as CSV", async () => {
+  // behavior: Copy CSV lives in the row context menu and copies the SELECTED rows (no footer button).
+  it("should copy the selected rows to the clipboard as CSV from the row menu", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -614,7 +614,16 @@ describe("TableCard pagination", () => {
     renderLive();
 
     await screen.findByText("Ada");
-    await user.click(screen.getByRole("button", { name: /copy csv/i }));
+    // no footer copy button anymore
+    expect(screen.queryByRole("button", { name: /copy csv/i })).toBeNull();
+
+    const row = screen.getByText("Ada").closest("tr") as HTMLElement;
+    await user.click(row);
+    fireEvent.contextMenu(row);
+    await user.click(
+      screen.queryByRole("menuitem", { name: /copy csv/i }) ??
+        screen.getByText(/copy csv/i),
+    );
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith("id,name\n1,Ada");

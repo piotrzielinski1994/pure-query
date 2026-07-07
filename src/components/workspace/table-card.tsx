@@ -20,11 +20,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  CopyButtons,
+  copyRowsToClipboard,
   DataGrid,
   renderCell,
   type Cell,
   type ColumnMeta,
+  type CopyFormat,
 } from "@/components/workspace/data-grid";
 import {
   applyRowMutations,
@@ -39,10 +40,18 @@ import {
   type RowSelectMode,
 } from "@/lib/workspace/row-select";
 import {
+  useJsonView,
   useWorkspace,
   type PendingMutation,
 } from "@/components/workspace/workspace-context";
 import { queryPreview } from "@/components/workspace/query-preview";
+import { JsonView } from "@/components/workspace/json-view";
+import {
+  diffToMutations,
+  jsonMutationId,
+  type JsonRow,
+} from "@/lib/workspace/json-edit";
+import { isEditableTarget } from "@/lib/workspace/is-editable-target";
 import { useSettingsOptional } from "@/lib/settings/settings-context";
 import { DEFAULT_SETTINGS } from "@/lib/settings/settings";
 import { resolveShortcuts } from "@/lib/shortcuts/resolve";
@@ -171,6 +180,8 @@ function TableView({
   onUndeleteRow,
   onCloneRow,
   onEditDocument,
+  jsonRows,
+  onSaveJson,
 }: {
   columns: string[];
   rows: Cell[][];
@@ -187,7 +198,14 @@ function TableView({
   onUndeleteRow?: (rowIndex: number) => void;
   onCloneRow?: (rowIndex: number) => void;
   onEditDocument?: (rowIndex: number) => void;
+  // The rows the JSON view shows/diffs (saved rows only - drafts stay in the grid). Defaults to
+  // `rows` when omitted (the static path, where grid rows and saved rows are the same).
+  jsonRows?: Cell[][];
+  // Stage the edited rows (live path only). Returns an error to show inline, else null/void.
+  // Absent => the JSON view is a read-only viewer.
+  onSaveJson?: (edited: JsonRow[]) => string | null | void;
 }) {
+  const { isJsonView, toggleJsonView } = useJsonView();
   const [isRecordView, setIsRecordView] = useState(false);
   const shortcuts =
     useSettingsOptional()?.settings.shortcuts ?? DEFAULT_SETTINGS.shortcuts;
@@ -239,6 +257,22 @@ function TableView({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [shortcuts]);
 
+  useEffect(() => {
+    const jsonViewBinding = resolveShortcuts(shortcuts)["toggle-json-view"];
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!matchesHotkey(event, jsonViewBinding)) {
+        return;
+      }
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      toggleJsonView();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [shortcuts, toggleJsonView]);
+
   const editValueAt = useCallback(
     (rowIndex: number, column: string): Cell => {
       const key = `${rowIndex}:${column}`;
@@ -257,39 +291,65 @@ function TableView({
     [edits],
   );
 
+  const copyRows = useCallback(
+    (rowIndices: number[], format: CopyFormat) => {
+      const selectedRows = rowIndices
+        .map((index) => rows[index])
+        .filter((row): row is Cell[] => row !== undefined);
+      copyRowsToClipboard(columns, selectedRows, format);
+    },
+    [columns, rows],
+  );
+
+  // The JSON view owns its own scroll + a pinned Save/Discard footer, so it must fill the height
+  // directly - NOT inside a ScrollArea (that grows the editor to its full content height and pushes
+  // the footer off-screen). The grid/record views keep the ScrollArea, owned here so each view
+  // controls its own scrolling and the call sites just drop TableView into a flex column.
+  if (isJsonView) {
+    return (
+      <JsonView columns={columns} rows={jsonRows ?? rows} onSave={onSaveJson} />
+    );
+  }
+
   if (isRecordView && rows.length > 0) {
     // Record view focuses one row - the selection anchor (the last row clicked), clamped.
     const index = Math.min(selection.anchor ?? 0, rows.length - 1);
     return (
-      <RecordView
-        columns={columns}
-        row={columns.map((column) => editValueAt(index, column))}
-        isDirtyColumn={(column) => isDirtyAt(index, column)}
-      />
+      <ScrollArea className="min-h-0 flex-1">
+        <RecordView
+          columns={columns}
+          row={columns.map((column) => editValueAt(index, column))}
+          isDirtyColumn={(column) => isDirtyAt(index, column)}
+        />
+      </ScrollArea>
     );
   }
 
   return (
-    <DataGrid
-      columns={columns}
-      rows={rows}
-      selectedRows={selection.selected}
-      onSelectRow={handleSelectRow}
-      editable={editable}
-      editValueAt={editValueAt}
-      isDirtyAt={isDirtyAt}
-      onCommitEdit={onCommitEdit}
-      columnMeta={columnMeta}
-      sort={sort}
-      onSortColumn={onSortColumn}
-      isDraftRow={isDraftRow}
-      isDeletedRow={isDeletedRow}
-      onDeleteRow={onDeleteRow}
-      onDeleteRows={onDeleteRows}
-      onUndeleteRow={onUndeleteRow}
-      onCloneRow={onCloneRow}
-      onEditDocument={onEditDocument}
-    />
+    <ScrollArea className="min-h-0 flex-1">
+      <DataGrid
+        columns={columns}
+        rows={rows}
+        selectedRows={selection.selected}
+        onSelectRow={handleSelectRow}
+        editable={editable}
+        editValueAt={editValueAt}
+        isDirtyAt={isDirtyAt}
+        onCommitEdit={onCommitEdit}
+        columnMeta={columnMeta}
+        sort={sort}
+        onSortColumn={onSortColumn}
+        isDraftRow={isDraftRow}
+        isDeletedRow={isDeletedRow}
+        onDeleteRow={onDeleteRow}
+        onDeleteRows={onDeleteRows}
+        onUndeleteRow={onUndeleteRow}
+        onCloneRow={onCloneRow}
+        onEditDocument={onEditDocument}
+        onCopyRows={copyRows}
+        shortcuts={shortcuts}
+      />
+    </ScrollArea>
   );
 }
 
@@ -336,6 +396,9 @@ function LiveTable({
   // Monotonic sequence so every physical fetch logs a distinct history entry (the dedup in
   // addHistoryEntry keys on id; a timestamp could collide and a static key would be deduped).
   const fetchSeq = useRef(0);
+  // Ids of the mutations the JSON view currently has staged, so a later (debounced) edit can
+  // discard the ones it no longer produces - reverting an edit in the JSON buffer un-stages it.
+  const jsonStagedIds = useRef<Set<string>>(new Set());
   const {
     data,
     error,
@@ -784,12 +847,122 @@ function LiveTable({
     setEditingDoc(null);
   };
 
+  // JSON view auto-stage: diff the edited array against the SAVED rows by PK and RECONCILE the
+  // pending pipeline to exactly that diff. The JSON view calls this on every (debounced) edit, so
+  // it must be idempotent and self-correcting: each call re-stages the current diff with
+  // deterministic ids, then discards any mutation IT previously staged that is no longer in the
+  // diff (a reverted edit un-stages itself). Mutations carry the same shapes/ids an inline edit
+  // uses, so they show in the Changes tab and commit via the existing Save bar. Returns an error
+  // string for the JSON view to show inline (validation fails => nothing staged, prior stays).
+  const saveJson = (edited: JsonRow[]): string | null => {
+    const pk = primaryKey;
+    if (!pk) {
+      return "Editing requires a primary key";
+    }
+    const diff = diffToMutations({
+      columns: columnNames,
+      rows,
+      edited,
+      primaryKey: pk,
+      engine: config.engine,
+    });
+    if (!diff.ok) {
+      return diff.error;
+    }
+    const editedByPk = new Map(
+      edited.map((obj) => [String(obj[pk] ?? ""), obj]),
+    );
+    const built = diff.value
+      .map((intent): PendingMutation | null => {
+        const id = jsonMutationId(tableId, intent, pk);
+        switch (intent.type) {
+          case "cell": {
+            const columnIndex = columnNames.indexOf(intent.column);
+            const original = rows[intent.rowIndex]?.[columnIndex] ?? null;
+            const pkValue =
+              pkIndex >= 0 ? (rows[intent.rowIndex]?.[pkIndex] ?? null) : null;
+            return {
+              kind: "cell",
+              id,
+              tableId,
+              tableName,
+              column: intent.column,
+              rowIndex: intent.rowIndex,
+              pkValue,
+              oldValue: original,
+              newValue: intent.newValue,
+              sql: preview.update(
+                tableName,
+                intent.column,
+                intent.newValue,
+                pk,
+                pkValue,
+              ),
+            };
+          }
+          case "delete": {
+            const pkValue = rows[intent.rowIndex]?.[pkIndex] ?? null;
+            if (pkValue === null) {
+              return null;
+            }
+            return {
+              kind: "delete",
+              id,
+              tableId,
+              tableName,
+              pkColumn: pk,
+              pkValue,
+              sql: preview.remove(tableName, pk, pkValue),
+            };
+          }
+          case "insert":
+            return {
+              kind: "insert",
+              id,
+              draftId: id,
+              tableId,
+              tableName,
+              values: intent.values,
+              sql: preview.insert(tableName, intent.values),
+            };
+          case "replace": {
+            const pkValue = rows[intent.rowIndex]?.[pkIndex] ?? null;
+            if (pkValue === null) {
+              return null;
+            }
+            return {
+              kind: "replace",
+              id,
+              tableId,
+              tableName,
+              pkValue,
+              document: JSON.stringify(editedByPk.get(String(pkValue)), null, 2),
+              sql: `db.${tableName}.replaceOne({ _id: ${JSON.stringify(pkValue)} }, ...)`,
+            };
+          }
+        }
+      })
+      .filter((mutation): mutation is PendingMutation => mutation !== null);
+
+    const nextIds = new Set(built.map((mutation) => mutation.id));
+    built.forEach((mutation) => upsertPendingEdit(mutation));
+    jsonStagedIds.current.forEach((id) => {
+      if (!nextIds.has(id)) {
+        discardPendingEdit(id);
+      }
+    });
+    jsonStagedIds.current = nextIds;
+    return null;
+  };
+
   return (
     <div className="flex h-full flex-col">
-      <ScrollArea className="min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col">
         <TableView
           columns={columnNames}
           rows={gridRows}
+          jsonRows={rows}
+          onSaveJson={editable ? saveJson : undefined}
           editable={editable}
           edits={edits}
           onCommitEdit={commitEdit}
@@ -804,7 +977,7 @@ function LiveTable({
           onCloneRow={editable ? cloneRow : undefined}
           onEditDocument={editable && isMongo ? openDocEditor : undefined}
         />
-      </ScrollArea>
+      </div>
       <DocumentEditorDialog
         open={editingDoc !== null}
         value={editingDoc?.text ?? ""}
@@ -864,11 +1037,6 @@ function LiveTable({
             <Plus className="size-4" />
           </Button>
         ) : null}
-        <CopyButtons
-          className="ml-auto h-full items-stretch"
-          columns={columnNames}
-          rows={rows}
-        />
       </div>
       {tableEdits.length > 0 ? (
         <div className="flex shrink-0 items-center justify-end gap-2 border-t bg-muted/30 px-3 py-1.5">
@@ -1011,12 +1179,12 @@ export function TableCard() {
             filter={filter}
           />
         ) : (
-          <ScrollArea className="min-h-0 flex-1">
+          <div className="flex min-h-0 flex-1 flex-col">
             <TableView
               columns={staticColumns(activeNode)}
               rows={staticRows(activeNode, filter)}
             />
-          </ScrollArea>
+          </div>
         )}
       </div>
       <Dialog

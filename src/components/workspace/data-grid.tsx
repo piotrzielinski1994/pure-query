@@ -15,7 +15,6 @@ import {
 } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -25,10 +24,9 @@ import {
 } from "@/components/ui/context-menu";
 import { toCsv, toJson } from "@/lib/export";
 import { isEditableTarget } from "@/lib/workspace/is-editable-target";
-import { useSettingsOptional } from "@/lib/settings/settings-context";
-import { DEFAULT_SETTINGS } from "@/lib/settings/settings";
 import { resolveShortcuts } from "@/lib/shortcuts/resolve";
 import { matchesHotkey } from "@/lib/shortcuts/match-hotkey";
+import type { ShortcutOverrides } from "@/lib/shortcuts/registry";
 import type { RowSelectMode } from "@/lib/workspace/row-select";
 import type { Sort, TableColumn } from "@/lib/workspace/model";
 
@@ -57,6 +55,10 @@ export type ColumnMeta = Pick<
 
 const columnHelper = createColumnHelper<Row>();
 
+// Test-only render counter (perf-probe): asserts the memo absorbs an unrelated chrome toggle. The
+// grid must NOT re-render when the sidebar/console toggles - see the shortcuts-as-prop note below.
+export const __dataGridRenderCount = { value: 0 };
+
 export function renderCell(value: Cell) {
   if (value === null) {
     return <span className="text-muted-foreground/60">[NULL]</span>;
@@ -84,52 +86,26 @@ function columnMarkers(meta: ColumnMeta): string {
   return [meta.dataType, markers].filter(Boolean).join(" ");
 }
 
-// Shared by the table card and the SQL result footer: copies the grid's columns + rows to the
-// clipboard as CSV or JSON. Disabled when there are no rows.
-export function CopyButtons({
-  columns,
-  rows,
-  className,
-}: {
-  columns: string[];
-  rows: Cell[][];
-  className?: string;
-}) {
-  const copy = async (format: "CSV" | "JSON") => {
-    const text = format === "CSV" ? toCsv(columns, rows) : toJson(columns, rows);
-    const result = await navigator.clipboard
-      .writeText(text)
-      .then(() => true)
-      .catch(() => false);
-    if (result) {
-      toast.success(`Copied ${rows.length} row(s) as ${format}`);
-    } else {
-      toast.error(`Could not copy to clipboard`);
-    }
-  };
+// Copies the given columns + rows to the clipboard as CSV or JSON and fires a toast. Shared by the
+// grid's row context menu (copies the current selection) so the copy/toast behaviour stays in one
+// place regardless of which caller (table card / SQL result) triggers it.
+export type CopyFormat = "CSV" | "JSON";
 
-  return (
-    <div className={cn("flex items-center", className)}>
-      <Button
-        type="button"
-        variant="ghost"
-        disabled={rows.length === 0}
-        onClick={() => copy("CSV")}
-        className="h-full rounded-none border-0 border-l border-l-border px-3"
-      >
-        Copy CSV
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        disabled={rows.length === 0}
-        onClick={() => copy("JSON")}
-        className="h-full rounded-none border-0 border-l border-l-border px-3"
-      >
-        Copy JSON
-      </Button>
-    </div>
-  );
+export async function copyRowsToClipboard(
+  columns: string[],
+  rows: Cell[][],
+  format: CopyFormat,
+): Promise<void> {
+  const text = format === "CSV" ? toCsv(columns, rows) : toJson(columns, rows);
+  const copied = await navigator.clipboard
+    .writeText(text)
+    .then(() => true)
+    .catch(() => false);
+  if (copied) {
+    toast.success(`Copied ${rows.length} row(s) as ${format}`);
+    return;
+  }
+  toast.error("Could not copy to clipboard");
 }
 
 // The single grid shared by the table card and the SQL result pane - they must look
@@ -160,6 +136,8 @@ function DataGridImpl({
   onUndeleteRow,
   onCloneRow,
   onEditDocument,
+  onCopyRows,
+  shortcuts,
 }: {
   columns: string[];
   rows: Cell[][];
@@ -184,14 +162,21 @@ function DataGridImpl({
   // MongoDB only: open the whole row's document in a JSON editor (a nested object/array cell can't
   // be edited inline). Absent for SQL grids, so no "Edit document" item shows there.
   onEditDocument?: (rowIndex: number) => void;
+  // Copy the given row indices (the current selection) to the clipboard as CSV/JSON. When present,
+  // the row menu offers "Copy CSV"/"Copy JSON" for the selection. Absent => no copy items.
+  onCopyRows?: (rowIndices: number[], format: CopyFormat) => void;
+  // The resolved shortcut OVERRIDES map, passed in as a prop (not read via useSettingsOptional here)
+  // so this memoized grid does NOT subscribe to the Settings context - a chrome toggle rebuilds the
+  // settings value, and a context consumer would re-render all 200 rows despite memo. The callers'
+  // `settings.shortcuts` ref is stable across a chrome write, so memo absorbs the toggle.
+  shortcuts: ShortcutOverrides;
 }) {
   const [editing, setEditing] = useState<{
     rowIndex: number;
     column: string;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const shortcuts =
-    useSettingsOptional()?.settings.shortcuts ?? DEFAULT_SETTINGS.shortcuts;
+  __dataGridRenderCount.value += 1;
 
   // The delete-rows binding deletes the current multi-selection, but only when the grid (not a cell
   // input or another surface) has focus, and only if bulk delete is wired (editable table card).
@@ -327,7 +312,8 @@ function DataGridImpl({
             const isDeleted = isDeletedRow?.(row.index) ?? false;
             // Row context menu only when mutations are wired (onDeleteRow / onEditDocument) and the
             // row is a saved one - draft rows are discarded via the Changes tab, not a delete.
-            const hasRowMenu = Boolean(onDeleteRow || onEditDocument) && !isDraft;
+            const hasRowMenu =
+              Boolean(onDeleteRow || onEditDocument || onCopyRows) && !isDraft;
             const rowElement = (
               <tr
                 aria-selected={selectedRows.has(row.index)}
@@ -335,7 +321,10 @@ function DataGridImpl({
                   onSelectRow(row.index, rowSelectModeOf(event))
                 }
                 className={cn(
-                  "cursor-default border-b aria-selected:bg-accent",
+                  // select-none: Shift-click range-select must not also trigger the browser's
+                  // native text selection (which highlights the cell text blue). An editing input
+                  // re-enables its own text selection, so inline edit is unaffected.
+                  "cursor-default select-none border-b aria-selected:bg-accent",
                   isDraft && "bg-emerald-500/10",
                   isDeleted && "line-through opacity-50",
                 )}
@@ -431,6 +420,32 @@ function DataGridImpl({
                           Clone
                         </ContextMenuItem>
                       ) : null}
+                      {onCopyRows
+                        ? (() => {
+                            // Copy the selection if the right-clicked row is part of it, else just
+                            // this row - same "act on the selection you clicked into" rule as delete.
+                            const target =
+                              selectedRows.has(row.index) && selectedRows.size > 0
+                                ? [...selectedRows]
+                                : [row.index];
+                            const suffix =
+                              target.length > 1 ? ` (${target.length} rows)` : "";
+                            return (
+                              <>
+                                <ContextMenuItem
+                                  onSelect={() => onCopyRows(target, "CSV")}
+                                >
+                                  {`Copy CSV${suffix}`}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onSelect={() => onCopyRows(target, "JSON")}
+                                >
+                                  {`Copy JSON${suffix}`}
+                                </ContextMenuItem>
+                              </>
+                            );
+                          })()
+                        : null}
                       {onDeleteRows &&
                       selectedRows.has(row.index) &&
                       selectedRows.size > 1 ? (

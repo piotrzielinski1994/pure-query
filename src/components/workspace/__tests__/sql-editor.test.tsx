@@ -393,6 +393,43 @@ describe("SqlEditor MongoDB completion", () => {
     expect(labels).toContain("aggregate");
   });
 
+  // behavior: the Mongo FILTER ROW is a bare find document (no db.<coll>.find prefix) scoped to one
+  // collection via defaultTable; after a key-opening `"` it completes that collection's fields.
+  it("should complete the default collection's fields in a bare filter document", async () => {
+    const mongoSchema: TableSchema[] = [
+      {
+        schema: null,
+        name: "users",
+        columns: [
+          { name: "vip", dataType: "" },
+          { name: "email", dataType: "" },
+        ],
+      },
+      {
+        schema: null,
+        name: "orders",
+        columns: [{ name: "total", dataType: "" }],
+      },
+    ];
+    const doc = '{ "';
+    const { container } = render(
+      <SqlEditor
+        value={doc}
+        onChange={() => {}}
+        engine="mongodb"
+        schema={mongoSchema}
+        collections={["users", "orders"]}
+        defaultTable="users"
+      />,
+    );
+
+    const labels = await completionLabels(container, doc);
+    expect(labels).toContain("vip");
+    expect(labels).toContain("email");
+    // scoped to the filter's collection - the other collection's fields do not bleed in
+    expect(labels).not.toContain("total");
+  });
+
   // behavior: inside the find body, the editor completes the sampled field names of the command's
   // collection (from the schema), not another collection's fields.
   it("should complete field names of the command collection inside the find body", async () => {
