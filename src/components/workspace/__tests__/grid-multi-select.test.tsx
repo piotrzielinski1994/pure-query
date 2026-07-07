@@ -11,9 +11,11 @@ const alwaysFalse = () => false;
 function MultiSelectGrid({
   onDeleteRows,
   onDeleteRow,
+  onCopyRows,
 }: {
   onDeleteRows?: (indices: number[]) => void;
   onDeleteRow?: (index: number) => void;
+  onCopyRows?: (indices: number[], format: "CSV" | "JSON") => void;
 }) {
   const columns = ["id", "name"];
   const rows = [
@@ -64,6 +66,8 @@ function MultiSelectGrid({
       onCommitEdit={noop}
       onDeleteRow={onDeleteRow}
       onDeleteRows={onDeleteRows}
+      onCopyRows={onCopyRows}
+      shortcuts={{}}
     />
   );
 }
@@ -179,5 +183,58 @@ describe("grid bulk delete", () => {
       screen.getByText("Delete");
     await user.click(item);
     expect(onDeleteRow).toHaveBeenCalledWith(0);
+  });
+});
+
+describe("grid copy from context menu", () => {
+  // behavior: the row menu offers "Copy CSV"/"Copy JSON" for the selection and calls onCopyRows
+  // with every selected index + the format.
+  it("should call onCopyRows with the selected indices for Copy CSV", async () => {
+    const user = userEvent.setup();
+    const onCopyRows = vi.fn();
+    render(<MultiSelectGrid onCopyRows={onCopyRows} onDeleteRow={noop} />);
+
+    await user.click(rowFor("Ada"));
+    await user.keyboard("{Meta>}");
+    await user.click(rowFor("Grace"));
+    await user.keyboard("{/Meta}");
+
+    fireEvent.contextMenu(rowFor("Ada"));
+    await user.click(
+      screen.queryByRole("menuitem", { name: /copy csv/i }) ??
+        screen.getByText(/copy csv/i),
+    );
+
+    expect(onCopyRows).toHaveBeenCalledTimes(1);
+    expect([...onCopyRows.mock.calls[0][0]].sort()).toEqual([0, 2]);
+    expect(onCopyRows.mock.calls[0][1]).toBe("CSV");
+  });
+
+  // behavior: Copy JSON passes the "JSON" format.
+  it("should call onCopyRows with JSON for Copy JSON", async () => {
+    const user = userEvent.setup();
+    const onCopyRows = vi.fn();
+    render(<MultiSelectGrid onCopyRows={onCopyRows} onDeleteRow={noop} />);
+
+    await user.click(rowFor("Ada"));
+    fireEvent.contextMenu(rowFor("Ada"));
+    await user.click(
+      screen.queryByRole("menuitem", { name: /copy json/i }) ??
+        screen.getByText(/copy json/i),
+    );
+
+    expect(onCopyRows).toHaveBeenCalledWith([0], "JSON");
+  });
+
+  // behavior: with no onCopyRows wired, no copy items appear (read-only grid without the prop).
+  it("should not show copy items when onCopyRows is absent", async () => {
+    const user = userEvent.setup();
+    render(<MultiSelectGrid onDeleteRow={noop} />);
+
+    await user.click(rowFor("Ada"));
+    fireEvent.contextMenu(rowFor("Ada"));
+
+    expect(within(document.body).queryByText(/copy csv/i)).toBeNull();
+    expect(within(document.body).queryByText(/copy json/i)).toBeNull();
   });
 });

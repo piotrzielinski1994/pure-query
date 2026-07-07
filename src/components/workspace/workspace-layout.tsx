@@ -8,7 +8,10 @@ import { Sidebar } from "@/components/workspace/sidebar";
 import { Main } from "@/components/workspace/main";
 import { CommandPalette } from "@/components/workspace/command-palette";
 import { NewFolderDialog } from "@/components/workspace/new-folder-dialog";
-import { useWorkspace } from "@/components/workspace/workspace-context";
+import {
+  useChrome,
+  useWorkspace,
+} from "@/components/workspace/workspace-context";
 import { useThemeToggle } from "@/lib/theme/theme-context";
 import { Toaster } from "@/components/ui/sonner";
 import { useSettingsOptional } from "@/lib/settings/settings-context";
@@ -25,9 +28,6 @@ export function WorkspaceLayout() {
     activeTabId,
     activeDatabaseTab,
     toggleSplitOrientation,
-    isSidebarVisible,
-    toggleSidebar,
-    toggleConsole,
     addDatabase,
     layouts,
     saveLayout,
@@ -35,7 +35,9 @@ export function WorkspaceLayout() {
     openTabIds,
     setActiveTab,
     closeTab,
+    closeOtherTabs,
   } = useWorkspace();
+  const { isSidebarVisible, toggleSidebar, toggleConsole } = useChrome();
   const toggleTheme = useThemeToggle();
   const shortcuts =
     useSettingsOptional()?.settings.shortcuts ?? DEFAULT_SETTINGS.shortcuts;
@@ -80,6 +82,11 @@ export function WorkspaceLayout() {
           closeTab(activeTabId);
         }
       },
+      "close-other-tabs": () => {
+        if (activeTabId !== null) {
+          closeOtherTabs(activeTabId);
+        }
+      },
     };
     const onKeyDown = (event: KeyboardEvent) => {
       const hit = (Object.keys(dispatch) as ShortcutActionId[]).find((id) =>
@@ -105,6 +112,7 @@ export function WorkspaceLayout() {
     activeTabId,
     setActiveTab,
     closeTab,
+    closeOtherTabs,
   ]);
 
   return (

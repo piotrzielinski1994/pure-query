@@ -4,7 +4,17 @@ import type { EditorView } from "@codemirror/view";
 import { toast } from "sonner";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CopyButtons, DataGrid } from "@/components/workspace/data-grid";
+import {
+  copyRowsToClipboard,
+  DataGrid,
+  type Cell,
+  type CopyFormat,
+} from "@/components/workspace/data-grid";
+import {
+  nextRowSelection,
+  type RowSelectionState,
+  type RowSelectMode,
+} from "@/lib/workspace/row-select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HorizontalSplit } from "@/components/workspace/horizontal-split";
 import { SaveScriptDialog } from "@/components/workspace/save-script-dialog";
@@ -14,6 +24,8 @@ import {
   selectedOrAllSql,
 } from "@/components/workspace/sql-editor";
 import { useWorkspace } from "@/components/workspace/workspace-context";
+import { useSettingsOptional } from "@/lib/settings/settings-context";
+import { DEFAULT_SETTINGS } from "@/lib/settings/settings";
 import {
   cancelQuery,
   executeMongo,
@@ -29,8 +41,9 @@ import type {
 
 const noop = () => {};
 const alwaysFalse = () => false;
-// Read-only SQL result grid: nothing is row-selectable (no row mutations), so a stable empty set.
-const NO_SELECTED_ROWS: Set<number> = new Set();
+// The SQL result grid is read-only but row-selectable (for Copy CSV/JSON on a selection); a stable
+// empty selection is the default and the reset value when the row array changes.
+const EMPTY_SELECTION: RowSelectionState = { selected: new Set<number>(), anchor: null };
 
 const UNTITLED = "untitled";
 
@@ -107,10 +120,36 @@ function sortRows(
 
 function OutcomeGrid({ outcome }: { outcome: QueryOutcome }) {
   const [sort, setSort] = useState<Sort | null>(null);
+  // The resolved-override map, read here (OutcomeGrid re-renders with its parent anyway) and passed
+  // to the memoized DataGrid as a stable-ref prop, so the grid never subscribes to Settings context
+  // (a chrome toggle rebuilds that value and would re-render all rows despite memo).
+  const shortcuts =
+    useSettingsOptional()?.settings.shortcuts ?? DEFAULT_SETTINGS.shortcuts;
 
   const rows = useMemo(
     () => sortRows(outcome.columns, outcome.rows, sort),
     [outcome.columns, outcome.rows, sort],
+  );
+
+  // Selection is positional (indices into `rows`), so it's only valid for the exact row array it
+  // was made against. Stamp it with that array; when `rows` changes (a new query, a sort) the stamp
+  // mismatches and the selection reads empty - the same guard the editable grid uses.
+  const [stamped, setStamped] = useState<{
+    rows: Cell[][];
+    selection: RowSelectionState;
+  }>({ rows, selection: EMPTY_SELECTION });
+  const selection = stamped.rows === rows ? stamped.selection : EMPTY_SELECTION;
+  const handleSelectRow = useCallback(
+    (index: number, mode: RowSelectMode) =>
+      setStamped((current) => ({
+        rows,
+        selection: nextRowSelection(
+          current.rows === rows ? current.selection : EMPTY_SELECTION,
+          index,
+          mode,
+        ),
+      })),
+    [rows],
   );
 
   const cycleSort = useCallback(
@@ -133,31 +172,38 @@ function OutcomeGrid({ outcome }: { outcome: QueryOutcome }) {
     [rows, outcome.columns],
   );
 
+  const copyRows = useCallback(
+    (rowIndices: number[], format: CopyFormat) => {
+      const picked = rowIndices
+        .map((index) => rows[index])
+        .filter((row): row is Cell[] => row !== undefined);
+      copyRowsToClipboard(outcome.columns, picked, format);
+    },
+    [rows, outcome.columns],
+  );
+
   return (
     <div className="flex h-full flex-col">
       <ScrollArea className="min-h-0 flex-1">
         <DataGrid
           columns={outcome.columns}
           rows={rows}
-          selectedRows={NO_SELECTED_ROWS}
-          onSelectRow={noop}
+          selectedRows={selection.selected}
+          onSelectRow={handleSelectRow}
           editable={false}
           editValueAt={editValueAt}
           isDirtyAt={alwaysFalse}
           onCommitEdit={noop}
           sort={sort}
           onSortColumn={cycleSort}
+          onCopyRows={copyRows}
+          shortcuts={shortcuts}
         />
       </ScrollArea>
       <div className="flex h-9 shrink-0 items-stretch border-t bg-muted/30">
         <span className="flex items-center px-3 text-xs text-muted-foreground">
           {rows.length} rows
         </span>
-        <CopyButtons
-          className="ml-auto h-full items-stretch"
-          columns={outcome.columns}
-          rows={rows}
-        />
       </div>
     </div>
   );

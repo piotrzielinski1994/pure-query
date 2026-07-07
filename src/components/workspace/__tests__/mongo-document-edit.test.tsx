@@ -24,6 +24,7 @@ function renderGrid(onEditDocument?: (rowIndex: number) => void) {
       onCommitEdit={noop}
       onDeleteRow={noop}
       onEditDocument={onEditDocument}
+      shortcuts={{}}
     />,
   );
 }

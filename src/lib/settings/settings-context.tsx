@@ -19,6 +19,11 @@ import type { ShortcutActionId } from "@/lib/shortcuts/registry";
 type SettingsContextValue = {
   settings: Settings;
   persist: (next: Settings) => void;
+  // Write-only persist of the UI-chrome slice (sidebar/console/split/layouts/tabs). It saves to
+  // the store but does NOT setSettings, so it never re-renders settings consumers - chrome is only
+  // ever READ as the initial seed, never reactively, so a re-render would be pure waste (and it was
+  // driving a persist feedback loop that made sidebar/console toggles laggy with a big table open).
+  saveChrome: (chrome: Omit<Settings, "theme" | "shortcuts">) => void;
   saveThemeMode: (mode: ThemeMode) => void;
   saveThemeColors: (colors: ThemeColors) => void;
   saveShortcut: (id: ShortcutActionId, hotkey: string) => void;
@@ -53,6 +58,16 @@ export function SettingsProvider({ store, children }: SettingsProviderProps) {
       store.save(next);
     },
     [store],
+  );
+
+  // Merges the chrome slice over the CURRENT settings and saves to the store WITHOUT setSettings.
+  // Closing over `settings` is stable across chrome toggles (saveChrome never setState's, and theme/
+  // shortcut edits - the only writers - are rare), so a toggle never re-renders settings consumers.
+  const saveChrome = useCallback(
+    (chrome: Omit<Settings, "theme" | "shortcuts">) => {
+      store.save({ ...(settings ?? DEFAULT_SETTINGS), ...chrome });
+    },
+    [store, settings],
   );
 
   const update = useCallback(
@@ -105,6 +120,7 @@ export function SettingsProvider({ store, children }: SettingsProviderProps) {
         : {
             settings,
             persist,
+            saveChrome,
             saveThemeMode,
             saveThemeColors,
             saveShortcut,
@@ -113,6 +129,7 @@ export function SettingsProvider({ store, children }: SettingsProviderProps) {
     [
       settings,
       persist,
+      saveChrome,
       saveThemeMode,
       saveThemeColors,
       saveShortcut,

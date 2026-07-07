@@ -17,8 +17,8 @@ const EXPECTED_BY_SCOPE: Record<ShortcutScope, ShortcutActionId[]> = {
     "toggle-theme",
     "toggle-split-orientation",
   ],
-  tab: ["next-tab", "prev-tab", "close-tab"],
-  grid: ["toggle-record-view", "delete-rows"],
+  tab: ["next-tab", "prev-tab", "close-tab", "close-other-tabs"],
+  grid: ["toggle-record-view", "delete-rows", "toggle-json-view"],
   tree: ["delete-nodes"],
   editor: ["run-query", "save-script"],
 };
@@ -95,5 +95,17 @@ describe("SHORTCUT_ACTIONS registry", () => {
     expect(byId.get("toggle-record-view")).toBe("Tab");
     expect(byId.get("run-query")).toBe("Mod+Enter");
     expect(byId.get("save-script")).toBe("Mod+S");
+  });
+
+  // AC-001, TC-001 - behavior: the JSON view toggle is a grid action bound to Mod+Shift+J.
+  it("should carry the documented default binding for the JSON view toggle", () => {
+    const byId = new Map(SHORTCUT_ACTIONS.map((a) => [a.id, a.defaultHotkey]));
+    expect(byId.get("toggle-json-view")).toBe("Mod+Shift+J");
+  });
+
+  // behavior: close-other-tabs is a tab action bound to Mod+Alt+W (mirrors requi).
+  it("should carry the documented default binding for close other tabs", () => {
+    const byId = new Map(SHORTCUT_ACTIONS.map((a) => [a.id, a.defaultHotkey]));
+    expect(byId.get("close-other-tabs")).toBe("Mod+Alt+W");
   });
 });

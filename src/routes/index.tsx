@@ -8,20 +8,16 @@ import { useWorkspaceStore } from "@/lib/workspace/workspace-store-context";
 import { rootRoute } from "@/routes/__root";
 
 export function HomePage() {
-  const { settings, persist } = useSettings();
+  const { settings, saveChrome } = useSettings();
   const { tree, persistTree } = useWorkspaceStore();
 
-  // The workspace persists only the UI-chrome slice of Settings; preserve the theme (owned by the
-  // ThemeProvider / theme.json) and the shortcuts (owned by the Settings page / keymap.json) so a
-  // chrome write doesn't clobber either back to defaults. Memoized + keyed on their stable
-  // references so identity doesn't change on a chrome write (which would re-fire the provider's
-  // persist effect and loop).
-  const theme = settings.theme;
-  const shortcuts = settings.shortcuts;
+  // The workspace persists only the UI-chrome slice of Settings. saveChrome is a WRITE-ONLY store
+  // save (no setSettings), so a sidebar/console toggle never re-renders the settings tree - it
+  // merges over the current theme/shortcuts internally. Stable identity ([saveChrome] only), so it
+  // never re-fires the provider's persist effect. (Chrome is only ever read as the initial seed.)
   const persistChrome = useCallback(
-    (next: Omit<Settings, "theme" | "shortcuts">) =>
-      persist({ ...next, theme, shortcuts }),
-    [persist, theme, shortcuts],
+    (next: Omit<Settings, "theme" | "shortcuts">) => saveChrome(next),
+    [saveChrome],
   );
 
   return (

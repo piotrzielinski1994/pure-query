@@ -2,6 +2,7 @@ export type PaletteCommandId =
   | "new-database"
   | "new-folder"
   | "close-tab"
+  | "close-other-tabs"
   | "close-all-tabs"
   | "next-tab"
   | "prev-tab"
@@ -9,11 +10,13 @@ export type PaletteCommandId =
   | "toggle-split-orientation"
   | "toggle-sidebar"
   | "toggle-console"
-  | "toggle-theme";
+  | "toggle-theme"
+  | "toggle-json-view";
 
 export type PaletteState = {
   openTabCount: number;
   isSplitView: boolean;
+  isTableActive: boolean;
 };
 
 import type { ShortcutActionId } from "@/lib/shortcuts/registry";
@@ -44,6 +47,12 @@ export const PALETTE_COMMANDS: readonly PaletteCommandDef[] = [
     when: () => true,
   },
   { id: "close-tab", name: "Close tab", actionId: "close-tab", when: hasTabs },
+  {
+    id: "close-other-tabs",
+    name: "Close other tabs",
+    actionId: "close-other-tabs",
+    when: hasMultipleTabs,
+  },
   { id: "close-all-tabs", name: "Close all tabs", when: hasTabs },
   {
     id: "next-tab",
@@ -81,5 +90,11 @@ export const PALETTE_COMMANDS: readonly PaletteCommandDef[] = [
     name: "Toggle theme",
     actionId: "toggle-theme",
     when: () => true,
+  },
+  {
+    id: "toggle-json-view",
+    name: "View rows as JSON",
+    actionId: "toggle-json-view",
+    when: (state) => state.isTableActive,
   },
 ];

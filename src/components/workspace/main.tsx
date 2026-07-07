@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -5,10 +6,17 @@ import {
 } from "@/components/ui/resizable";
 import { Content } from "@/components/workspace/content";
 import { Console } from "@/components/workspace/console";
-import { useWorkspace } from "@/components/workspace/workspace-context";
+import {
+  useChrome,
+  useWorkspace,
+} from "@/components/workspace/workspace-context";
 
-export function Main() {
-  const { isConsoleVisible, layouts, saveLayout } = useWorkspace();
+// Memoized (no props): a SIDEBAR toggle re-renders WorkspaceLayout but must not re-render this
+// subtree. A CONSOLE toggle flips useChrome here (adds/removes the console panel) - required - but
+// the memoized <Content/> below still absorbs it, so the table grid never re-renders on either.
+export const Main = memo(function Main() {
+  const { layouts, saveLayout } = useWorkspace();
+  const { isConsoleVisible } = useChrome();
 
   // Same reasoning as WorkspaceLayout: the group + content panel are rendered unconditionally with
   // stable keys/order so toggling the console (Cmd+J) only adds/removes the console panel and never
@@ -38,4 +46,4 @@ export function Main() {
         : null}
     </ResizablePanelGroup>
   );
-}
+});

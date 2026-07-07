@@ -1,5 +1,9 @@
 import { formatForDisplay } from "@tanstack/react-hotkeys";
-import { useWorkspace } from "@/components/workspace/workspace-context";
+import {
+  useChrome,
+  useJsonView,
+  useWorkspace,
+} from "@/components/workspace/workspace-context";
 import { useThemeToggle } from "@/lib/theme/theme-context";
 import {
   PALETTE_COMMANDS,
@@ -35,13 +39,14 @@ export function CommandPalette({
     activeDatabaseTab,
     setActiveTab,
     closeTab,
+    closeOtherTabs,
     closeAllTabs,
     newTab,
     addDatabase,
     toggleSplitOrientation,
-    toggleSidebar,
-    toggleConsole,
   } = useWorkspace();
+  const { toggleSidebar, toggleConsole } = useChrome();
+  const { toggleJsonView } = useJsonView();
   const toggleTheme = useThemeToggle();
 
   const cycleTab = (step: number) => {
@@ -61,10 +66,18 @@ export function CommandPalette({
     closeTab(activeTabId);
   };
 
+  const closeOthers = () => {
+    if (activeTabId === null) {
+      return;
+    }
+    closeOtherTabs(activeTabId);
+  };
+
   const handlers: Record<PaletteCommandId, () => void> = {
     "new-database": addDatabase,
     "new-folder": onNewFolder,
     "close-tab": closeActiveTab,
+    "close-other-tabs": closeOthers,
     "close-all-tabs": closeAllTabs,
     "next-tab": () => cycleTab(1),
     "prev-tab": () => cycleTab(-1),
@@ -73,6 +86,7 @@ export function CommandPalette({
     "toggle-sidebar": toggleSidebar,
     "toggle-console": toggleConsole,
     "toggle-theme": toggleTheme,
+    "toggle-json-view": toggleJsonView,
   };
 
   const shortcuts =
@@ -81,7 +95,12 @@ export function CommandPalette({
 
   const isSplitView =
     activeNode?.kind === "database" && activeDatabaseTab === "sql";
-  const state = { openTabCount: openTabIds.length, isSplitView };
+  const isTableActive = activeNode?.kind === "table";
+  const state = {
+    openTabCount: openTabIds.length,
+    isSplitView,
+    isTableActive,
+  };
   const commands = PALETTE_COMMANDS.filter((def) => def.when(state));
 
   return (

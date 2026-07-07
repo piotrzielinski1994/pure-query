@@ -11,7 +11,9 @@ export type ShortcutActionId =
   | "next-tab"
   | "prev-tab"
   | "close-tab"
+  | "close-other-tabs"
   | "toggle-record-view"
+  | "toggle-json-view"
   | "delete-rows"
   | "delete-nodes"
   | "run-query"
@@ -99,10 +101,24 @@ export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
     scope: "tab",
   },
   {
+    id: "close-other-tabs",
+    name: "Close other tabs",
+    description: "Close every open tab except the active one.",
+    defaultHotkey: "Mod+Alt+W",
+    scope: "tab",
+  },
+  {
     id: "toggle-record-view",
     name: "Toggle record view",
     description: "Switch the data grid between table and record view.",
     defaultHotkey: "Tab",
+    scope: "grid",
+  },
+  {
+    id: "toggle-json-view",
+    name: "Toggle JSON view",
+    description: "Show the loaded rows as an editable, foldable JSON array.",
+    defaultHotkey: "Mod+Shift+J",
     scope: "grid",
   },
   {

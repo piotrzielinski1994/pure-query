@@ -134,6 +134,7 @@ type SqlNamespace = Record<string, string[] | Record<string, string[]>>;
 function mongoCommandSource(
   collections: string[],
   schema: TableSchema[],
+  defaultCollection?: string,
 ): CompletionSource {
   return (context) => {
     const beforeCursor = context.state.sliceDoc(0, context.pos);
@@ -158,13 +159,15 @@ function mongoCommandSource(
         validFor: /^[\w$-]*$/,
       };
     }
-    // Inside the command body, after a quote opening a field key: offer the command's collection
-    // fields. The collection is the `db.<coll>.find|aggregate` in the buffer (one command here); the
-    // trailing `"` (no closing quote yet) marks a key position.
+    // After a quote opening a field key, offer the collection's fields. In the Query tab the
+    // collection is the `db.<coll>.find|aggregate` in the buffer; in the filter row (a bare find
+    // document, no such prefix) it is the `defaultCollection` the card scopes to. The trailing `"`
+    // (no closing quote yet) marks a key position.
     const fieldKey = beforeCursor.match(/"[\w$.]*$/);
     if (fieldKey) {
       const command = beforeCursor.match(/db\.([\w$-]+)\.(?:find|aggregate)\b/);
-      const table = schema.find((entry) => entry.name === command?.[1]);
+      const collectionName = command?.[1] ?? defaultCollection;
+      const table = schema.find((entry) => entry.name === collectionName);
       if (!table) {
         return null;
       }
@@ -193,17 +196,19 @@ function buildSqlLanguage(
   defaultTableColumns: string[] | undefined,
   defaultSchema: string | undefined,
   collections: string[],
+  defaultTable: string | undefined,
 ) {
   // MongoDB has no SQL: the filter row + Query tab edit JSON (a find document / aggregation
-  // pipeline). Use the JSON language for highlighting + a small command-skeleton completion source
-  // (collection names after `db.`, find/aggregate after `db.<coll>.`). Field-name completion is out
-  // of scope (no schema introspection for Mongo).
+  // pipeline). Use the JSON language for highlighting + a command-skeleton completion source
+  // (collection names after `db.`, find/aggregate after `db.<coll>.`, and field names after a
+  // key-opening `"` - scoped to the command's collection in the Query tab, or `defaultTable` in the
+  // filter row's bare find document).
   if (engine === "mongodb") {
     const json = jsonLanguage();
     return new LanguageSupport(json.language, [
       json.support,
       json.language.data.of({
-        autocomplete: mongoCommandSource(collections, schema),
+        autocomplete: mongoCommandSource(collections, schema, defaultTable),
       }),
     ]);
   }
@@ -357,6 +362,7 @@ export function SqlEditor({
         defaultTableColumns,
         defaultSchema,
         collections ?? [],
+        defaultTable,
       ),
       syntaxHighlighting(makeSqlHighlight(editorColors)),
       syntaxHighlighting(classHighlighter),
