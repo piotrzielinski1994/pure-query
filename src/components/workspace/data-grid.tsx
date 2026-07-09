@@ -28,7 +28,11 @@ import { resolveShortcuts } from "@/lib/shortcuts/resolve";
 import { matchesHotkey } from "@/lib/shortcuts/match-hotkey";
 import type { ShortcutOverrides } from "@/lib/shortcuts/registry";
 import type { RowSelectMode } from "@/lib/workspace/row-select";
-import { navigableForeignKeys } from "@/lib/workspace/foreign-key-nav";
+import {
+  foreignKeyForColumn,
+  isForeignKeyNavigable,
+  navigableForeignKeys,
+} from "@/lib/workspace/foreign-key-nav";
 import type { ForeignKey, Sort, TableColumn } from "@/lib/workspace/model";
 
 // Which selection mode a row click implies: Shift = range, Cmd/Ctrl = toggle, plain = replace.
@@ -429,9 +433,50 @@ function DataGridImpl({
                           className="w-full bg-background px-3 py-1.5 font-mono outline-none"
                         />
                       ) : (
-                        <div className="overflow-hidden px-3 py-1.5 text-ellipsis whitespace-nowrap">
-                          {renderCell(dirtyValue)}
-                        </div>
+                        (() => {
+                          // Render an FK cell's value as a Cmd/Ctrl+click link when the column is part
+                          // of a foreign key whose value(s) are all non-null for this row. The modifier
+                          // (not a plain click) navigates, so a plain click still selects the row like
+                          // any cell; stopPropagation on the modified click keeps it from toggling the
+                          // row selection.
+                          const fk =
+                            onFollowForeignKey && foreignKeys && dirtyValue !== null
+                              ? foreignKeyForColumn(foreignKeys, column)
+                              : null;
+                          const isFkLink =
+                            fk !== null &&
+                            isForeignKeyNavigable(
+                              fk,
+                              columns,
+                              rows[row.index] ?? [],
+                            );
+                          if (isFkLink && fk && onFollowForeignKey) {
+                            return (
+                              <div className="overflow-hidden px-3 py-1.5 text-ellipsis whitespace-nowrap">
+                                <span
+                                  role="link"
+                                  data-testid={`fk-link-${column}-${row.index}`}
+                                  title={`Cmd/Ctrl+click to go to ${fk.referencedTable}`}
+                                  onClick={(event) => {
+                                    if (!event.metaKey && !event.ctrlKey) {
+                                      return;
+                                    }
+                                    event.stopPropagation();
+                                    onFollowForeignKey(fk, row.index);
+                                  }}
+                                  className="cursor-pointer text-primary underline underline-offset-2"
+                                >
+                                  {renderCell(dirtyValue)}
+                                </span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="overflow-hidden px-3 py-1.5 text-ellipsis whitespace-nowrap">
+                              {renderCell(dirtyValue)}
+                            </div>
+                          );
+                        })()
                       )}
                     </td>
                   );

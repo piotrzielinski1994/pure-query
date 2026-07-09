@@ -104,7 +104,9 @@ The dev server runs on port 1431 (set in both `vite.config.ts` and `src-tauri/ta
 > terminates the worker) and a run over ~5s raises a sticky warning. An open table also has a
 > read-only **Structure** view (`Mod/Ctrl+Shift+I` or the
 > "View table structure" palette command) showing its columns, indexes, foreign keys, and
-> constraints (MongoDB: collection indexes only). The sidebar tree + its connection configs persist in
+> constraints (MongoDB: collection indexes only). Right-clicking a SQL table row offers a **Go to
+> `<table>`** item per outbound foreign key with a non-null value, jumping to the referenced row (opens
+> that table's tab, filtered to the referenced key); FK columns are marked `FK` in the grid header. The sidebar tree + its connection configs persist in
 > `workspace.json`; UI/layout state (panel toggles, split orientation, expanded nodes, open
 > tabs, and whether the window was fullscreen at exit - restored on next launch) persists in
 > `settings.json`; the theme **mode** also lives in `settings.json` while the

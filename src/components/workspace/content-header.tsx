@@ -7,7 +7,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Plus, Table, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Plus, Table, X } from "lucide-react";
 
 export function ContentHeader() {
   const {
@@ -19,12 +19,38 @@ export function ContentHeader() {
     closeOtherTabs,
     closeAllTabs,
     addDatabase,
+    goBack,
+    goForward,
+    canGoBack,
+    canGoForward,
   } = useWorkspace();
   const hasMultipleTabs = openTabIds.length > 1;
 
   return (
     <TabBar
       ariaLabel="Open tabs"
+      leading={
+        <div className="flex shrink-0 items-stretch border-r">
+          <button
+            type="button"
+            aria-label="Navigate back"
+            onClick={goBack}
+            disabled={!canGoBack}
+            className="px-2 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
+          >
+            <ArrowLeft className="size-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="Navigate forward"
+            onClick={goForward}
+            disabled={!canGoForward}
+            className="px-2 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
+          >
+            <ArrowRight className="size-4" />
+          </button>
+        </div>
+      }
       trailing={
         <button
           type="button"

@@ -1844,9 +1844,10 @@ pub fn foreign_key_query(engine: DbEngine, has_schema: bool) -> String {
              JOIN information_schema.key_column_usage kcu \
                ON kcu.constraint_name = rc.constraint_name \
                AND kcu.constraint_schema = rc.constraint_schema \
-             JOIN information_schema.constraint_column_usage ccu \
-               ON ccu.constraint_name = rc.constraint_name \
-               AND ccu.constraint_schema = rc.constraint_schema \
+             JOIN information_schema.key_column_usage ccu \
+               ON ccu.constraint_name = rc.unique_constraint_name \
+               AND ccu.constraint_schema = rc.unique_constraint_schema \
+               AND ccu.ordinal_position = kcu.position_in_unique_constraint \
              WHERE kcu.table_name = $1 AND {} \
              ORDER BY rc.constraint_name, kcu.ordinal_position",
             if has_schema {
@@ -3691,6 +3692,17 @@ mod tests {
         assert!(
             query.contains("ccu.table_schema"),
             "PG FK query must select the referenced schema: {query}"
+        );
+        // A composite FK must NOT fan out into a cartesian product. Joining the referenced side via
+        // constraint_column_usage keyed only on constraint_name pairs every local column with every
+        // referenced column (2-col FK -> 4 rows). Correlate the referenced column by position instead.
+        assert!(
+            !query.contains("constraint_column_usage"),
+            "PG FK query must not use constraint_column_usage (cartesian for composite FKs): {query}"
+        );
+        assert!(
+            query.contains("position_in_unique_constraint"),
+            "PG FK query must correlate the referenced column by position_in_unique_constraint: {query}"
         );
     }
 

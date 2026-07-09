@@ -373,6 +373,69 @@ describe("FK navigation - selecting the item", () => {
   });
 });
 
+describe("FK navigation - clickable link cell", () => {
+  // behavior: an FK cell renders its value as a link affordance (data-fk-link) so the user sees it is
+  // navigable.
+  it("should render a non-null foreign-key value as a link", async () => {
+    mockFetch.mockResolvedValue(
+      rowsResult(["id", "customer_id"], [["1", "42"], ["2", null]], "id"),
+    );
+    mockStructure.mockResolvedValue(customerFkStructure);
+    renderPg();
+
+    const link = await screen.findByTestId("fk-link-customer_id-0");
+    expect(link).toHaveTextContent("42");
+  });
+
+  // behavior: a NULL FK value is NOT a link (nothing to navigate to).
+  it("should not render a link for a null foreign-key value", async () => {
+    mockFetch.mockResolvedValue(
+      rowsResult(["id", "customer_id"], [["1", "42"], ["2", null]], "id"),
+    );
+    mockStructure.mockResolvedValue(customerFkStructure);
+    renderPg();
+
+    await screen.findByTestId("fk-link-customer_id-0");
+    expect(screen.queryByTestId("fk-link-customer_id-1")).toBeNull();
+  });
+
+  // AC-013 - behavior: Cmd/Ctrl+click on an FK link navigates to the referenced table + filter.
+  it("should navigate to the referenced table when the link is Cmd/Ctrl-clicked", async () => {
+    mockFetch.mockResolvedValue(
+      rowsResult(["id", "customer_id"], [["1", "42"], ["2", null]], "id"),
+    );
+    mockStructure.mockResolvedValue(customerFkStructure);
+    renderPg();
+
+    expect(screen.getByTestId("active-tab")).toHaveTextContent(ORDERS_ID);
+    const link = await screen.findByTestId("fk-link-customer_id-0");
+
+    fireEvent.click(link, { metaKey: true });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("active-tab")).toHaveTextContent(CUSTOMERS_ID),
+    );
+    expect(screen.getByTestId("customers-filter")).toHaveTextContent(
+      `"id" = '42'`,
+    );
+  });
+
+  // AC-013 - behavior: a PLAIN click on an FK link does NOT navigate (only the modifier does, so a
+  // plain click still selects the row like any cell).
+  it("should not navigate on a plain click of an FK link", async () => {
+    mockFetch.mockResolvedValue(
+      rowsResult(["id", "customer_id"], [["1", "42"], ["2", null]], "id"),
+    );
+    mockStructure.mockResolvedValue(customerFkStructure);
+    renderPg();
+
+    const link = await screen.findByTestId("fk-link-customer_id-0");
+    fireEvent.click(link);
+
+    expect(screen.getByTestId("active-tab")).toHaveTextContent(ORDERS_ID);
+  });
+});
+
 describe("FK navigation - MongoDB", () => {
   // AC-007, TC-006 - behavior: a MongoDB collection has no foreign keys, so no Go to item and no FK
   // header marker appear.

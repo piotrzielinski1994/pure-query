@@ -2,6 +2,28 @@
 
 Jump from a foreign-key value in the data grid to the referenced row in the target table.
 
+**Status: implemented** (branch `20260709165319-fk-navigation`; NOT yet merged/pushed - awaiting
+review). FE 1056 tests pass, backend 151 pass, tsc + lint clean. Post-review additions: composite-FK
+cartesian bug fix (AC-012), second FK target in the seed (AC-010), back/forward history (AC-011).
+
+## AC traceability
+
+| AC | Test |
+| -- | ---- |
+| AC-001 | `fk-navigation.test.tsx` "should show a Go to item for a row with a non-null foreign-key value" |
+| AC-002 | `fk-navigation.test.tsx` "should open the customers tab and apply the pinning filter when the Go to item is selected" |
+| AC-003 | `foreign-key-nav.test.ts` "should return one entry listing both pairs for a composite FK" + `query-preview.test.ts` "should AND-join a composite referenced-column fragment" |
+| AC-004 | `fk-navigation.test.tsx` "should show no Go to item for a row with a null foreign-key value" + `foreign-key-nav.test.ts` "should exclude an FK if its local value is null" |
+| AC-005 | `fk-navigation.test.tsx` "should mark the foreign-key column with FK in the header" |
+| AC-006 | `fk-navigation.test.tsx` "should error-toast and not navigate when the target table is not loaded" |
+| AC-007 | `fk-navigation.test.tsx` "should show no Go to item and no FK marker for a MongoDB collection" |
+| AC-008 | `db.rs` `should_build_the_postgres_foreign_key_query_over_information_schema` / MySQL / SQLite + `should_fold_composite_foreign_key_rows_...` + `foreign-key-nav.test.ts` target-id tests |
+| AC-009 | `query-preview.test.ts` "should double an embedded single quote in the value" + "should backtick-quote identifiers for a mysql fragment" |
+| AC-010 | `foreign-key-nav.test.ts` "should return one entry per foreign key when a row has two FKs to two tables" (+ seed: `shipment_items` FKs to `products` + `warehouses`) |
+| AC-011 | `fk-nav-history.test.tsx` back-disabled / back-returns-to-source / forward-reapplies / forward-disabled + `nav-history.test.ts` (pure reducer, 9 cases) |
+| AC-012 | `db.rs` `should_build_the_postgres_foreign_key_query_over_information_schema` (must not use `constraint_column_usage`, must correlate by `position_in_unique_constraint`) |
+| AC-013 | `fk-navigation.test.tsx` "should render a non-null foreign-key value as a link" / "should not render a link for a null foreign-key value" / "should navigate ... when the link is Cmd/Ctrl-clicked" / "should not navigate on a plain click of an FK link" |
+
 ## Overview
 
 When browsing a live SQL table, a row's foreign-key columns point at rows in other tables. Today
@@ -11,17 +33,19 @@ FK on a row: it opens (or re-activates) the target table's content tab and appli
 pinning the referenced row(s). FK columns are also marked `FK` in the grid header so the link is
 discoverable.
 
-Navigation reuses the existing tab bar as the visit trail (the source tab stays open; click it to
-go back) - no dedicated back/forward stack.
+Navigation is tracked in a back/forward history (browser-style `(tableId, filter)` stack): Back
+returns to the source table + its filter, Forward re-applies the jump. Buttons live in the content
+header + `Mod+[` / `Mod+]` shortcuts. (This reverses the initial "rely on the tab bar" plan after
+user feedback - see adr.md.)
 
 **SQL engines only.** MongoDB has no foreign keys (`foreign_keys` is always empty), so no FK items
 appear there.
 
 ## Non-goals (YAGNI)
 
-- Back/forward navigation stack / breadcrumb (the tab bar is the trail).
 - Following a FK from a cell click or a clickable-link cell (right-click menu only).
 - Reverse navigation (find rows that reference THIS row).
+- Persisting the navigation history across launches (in-memory only).
 - MongoDB `$lookup`/manual-reference navigation.
 
 ## Acceptance Criteria
@@ -43,6 +67,15 @@ appear there.
   FK resolves to the correct target node.
 - AC-009: The filter fragment is built with engine-correct identifier quoting and value escaping (a
   value containing a quote does not break the SQL).
+- AC-010: A row with two foreign keys to two different tables shows two separate "Go to" items, each
+  navigating to its own target.
+- AC-011: After an FK jump, Back returns to the source table (restoring its tab + filter) and Forward
+  re-applies the jump; Back is disabled before any navigation and Forward at the newest entry.
+- AC-012: A composite foreign key's PG introspection does not fan into a cartesian product - the "Go
+  to" label and filter list each referenced column exactly once (no duplicated pairs).
+- AC-013: A foreign-key cell with a non-null value renders as a link (underlined, accent color); a
+  Cmd/Ctrl+click on it navigates to the referenced table (same as the menu item), a plain click does
+  not navigate (it selects the row); a null FK value / non-FK cell is not a link.
 
 ## Test Cases
 
@@ -69,8 +102,8 @@ appear there.
 
 | State                    | Behavior                                                                    |
 | ------------------------ | --------------------------------------------------------------------------- |
-| Row has navigable FK     | Row context menu shows "Go to <refTable> (col = value)" item(s)             |
-| Row FK value is null     | That FK contributes no menu item                                            |
+| Row has navigable FK     | Row menu shows "Go to <refTable> ..." item(s); FK cells render as Cmd/Ctrl+click links |
+| Row FK value is null     | That FK contributes no menu item; the cell is plain text (not a link)       |
 | Table has no FKs / Mongo | No FK items, no `FK` header marker                                          |
 | Target table not loaded  | Error toast "Table '<name>' is not loaded"; no navigation                   |
 | Target tab already open  | Re-activated + filter replaced (navigation intent overrides prior filter)   |

@@ -54,6 +54,41 @@ describe("navigableForeignKeys", () => {
     expect(result[0].values).toEqual(["1", "2"]);
   });
 
+  // AC-010 - pure-logic: a row with two FKs to two different tables yields two separate entries, each
+  // targeting its own referenced table (mirrors the seed's shipment_items -> products + warehouses).
+  it("should return one entry per foreign key when a row has two FKs to two tables", () => {
+    const productFk: ForeignKey = {
+      name: "shipment_items_product_fk",
+      columns: ["product_id"],
+      referencedTable: "products",
+      referencedSchema: "public",
+      referencedColumns: ["id"],
+    };
+    const warehouseFk: ForeignKey = {
+      name: "shipment_items_region_code_fk",
+      columns: ["region", "code"],
+      referencedTable: "warehouses",
+      referencedSchema: "public",
+      referencedColumns: ["region", "code"],
+    };
+
+    const result = navigableForeignKeys(
+      [productFk, warehouseFk],
+      ["id", "region", "code", "product_id", "qty"],
+      ["1", "EU", "W1", "3", "5"],
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result.map((entry) => entry.label)).toEqual([
+      "Go to products (product_id=3)",
+      "Go to warehouses (region=EU, code=W1)",
+    ]);
+    expect(result.map((entry) => entry.fk.referencedTable)).toEqual([
+      "products",
+      "warehouses",
+    ]);
+  });
+
   // AC-004, TC-003 - pure-logic: an FK whose local column value is null references nothing, so it is
   // excluded from the navigable set.
   it("should exclude an FK if its local value is null", () => {

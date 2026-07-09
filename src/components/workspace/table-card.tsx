@@ -434,8 +434,7 @@ function LiveTable({
     discardPendingEdit,
     discardPendingEditsForTable,
     addHistoryEntry,
-    openNode,
-    setTableFilter,
+    navigateTo,
     nodesById,
   } = useWorkspace();
   const { isStructureView, toggleStructureView } = useStructureView();
@@ -703,11 +702,10 @@ function LiveTable({
         toast.error(`Table '${fk.referencedTable}' is not loaded`);
         return;
       }
-      openNode(targetId);
-      setTableFilter(
-        targetId,
-        fkFilter(config.engine, fk.referencedColumns, values),
-      );
+      navigateTo({
+        tableId: targetId,
+        filter: fkFilter(config.engine, fk.referencedColumns, values),
+      });
     },
     [
       gridRows,
@@ -715,8 +713,7 @@ function LiveTable({
       connectionId,
       config.engine,
       nodesById,
-      openNode,
-      setTableFilter,
+      navigateTo,
     ],
   );
 

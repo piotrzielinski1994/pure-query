@@ -10,6 +10,8 @@ export type ShortcutActionId =
   | "toggle-split-orientation"
   | "next-tab"
   | "prev-tab"
+  | "nav-back"
+  | "nav-forward"
   | "close-tab"
   | "close-other-tabs"
   | "toggle-record-view"
@@ -94,6 +96,20 @@ export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
     description: "Activate the previous open tab.",
     defaultHotkey: "Ctrl+Shift+Tab",
     scope: "tab",
+  },
+  {
+    id: "nav-back",
+    name: "Navigate back",
+    description: "Return to the previous table in the FK-navigation history.",
+    defaultHotkey: "Mod+[",
+    scope: "global",
+  },
+  {
+    id: "nav-forward",
+    name: "Navigate forward",
+    description: "Go forward again in the FK-navigation history.",
+    defaultHotkey: "Mod+]",
+    scope: "global",
   },
   {
     id: "close-tab",

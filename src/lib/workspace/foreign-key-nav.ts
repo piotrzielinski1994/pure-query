@@ -35,6 +35,26 @@ export function navigableForeignKeys(
     });
 }
 
+// The foreign key a given column participates in (a column is at most one FK's member in practice),
+// or null. Used to render an FK cell as a navigable link; a composite FK is returned for each of its
+// member columns, so every part of the key links to the same target.
+export function foreignKeyForColumn(
+  foreignKeys: ForeignKey[],
+  column: string,
+): ForeignKey | null {
+  return foreignKeys.find((fk) => fk.columns.includes(column)) ?? null;
+}
+
+// True when every local column of `fk` has a non-null value in the row (so the FK actually points at
+// a target row - the same test `navigableForeignKeys` applies, exposed per-fk for the link cell).
+export function isForeignKeyNavigable(
+  fk: ForeignKey,
+  columns: string[],
+  row: Cell[],
+): boolean {
+  return localValues(fk, columns, row).every((value) => value !== null);
+}
+
 // The target table node id for an FK, matching WorkspaceProvider's `${databaseId}::${schema}::${name}`
 // id formula (empty schema segment when the FK carries no referenced schema - MySQL/SQLite).
 export function fkTargetTableId(databaseId: string, fk: ForeignKey): string {
