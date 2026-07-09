@@ -20,11 +20,13 @@ import { cn } from "@/lib/utils";
 export function TabBar({
   ariaLabel,
   children,
+  leading,
   trailing,
   className,
 }: {
   ariaLabel: string;
   children: ReactNode;
+  leading?: ReactNode;
   trailing?: ReactNode;
   className?: string;
 }) {
@@ -35,6 +37,7 @@ export function TabBar({
         className,
       )}
     >
+      {leading}
       <div
         role="tablist"
         aria-label={ariaLabel}

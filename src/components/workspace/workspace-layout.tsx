@@ -36,6 +36,8 @@ export function WorkspaceLayout() {
     setActiveTab,
     closeTab,
     closeOtherTabs,
+    goBack,
+    goForward,
   } = useWorkspace();
   const { isSidebarVisible, toggleSidebar, toggleConsole } = useChrome();
   const toggleTheme = useThemeToggle();
@@ -80,6 +82,8 @@ export function WorkspaceLayout() {
       },
       "next-tab": () => cycleTab(1),
       "prev-tab": () => cycleTab(-1),
+      "nav-back": goBack,
+      "nav-forward": goForward,
       "close-tab": () => {
         if (activeTabId !== null) {
           closeTab(activeTabId);
@@ -116,6 +120,8 @@ export function WorkspaceLayout() {
     setActiveTab,
     closeTab,
     closeOtherTabs,
+    goBack,
+    goForward,
   ]);
 
   return (

@@ -36,6 +36,16 @@ import {
   rangeBetween,
 } from "@/lib/workspace/tree-select";
 import { insertNode } from "@/lib/workspace/tree-edit";
+import {
+  EMPTY_NAV,
+  pushNavigation,
+  canGoBack,
+  canGoForward,
+  goBack as goBackNav,
+  goForward as goForwardNav,
+  currentEntry,
+  type NavState,
+} from "@/lib/workspace/nav-history";
 
 // How a click adjusts the sidebar multi-selection: a plain click replaces it, a
 // Cmd/Ctrl click toggles one row, a Shift click selects the range from the
@@ -169,6 +179,14 @@ type WorkspaceContextValue = {
   // so its own state would otherwise reset). In-memory only - filters are ephemeral, not persisted.
   tableFilters: Map<string, string>;
   setTableFilter: (tableId: string, filter: string) => void;
+  // FK-navigation back/forward history: `navigateTo` records a jump (opens the target tab + applies
+  // the filter, pushing a history entry from the current position); `goBack`/`goForward` walk the
+  // (tableId, filter) stack, restoring both the active tab and that table's filter. In-memory only.
+  navigateTo: (target: { tableId: string; filter: string }) => void;
+  goBack: () => void;
+  goForward: () => void;
+  canGoBack: boolean;
+  canGoForward: boolean;
   // JS saved-script document tabs (F7), mirroring the SQL saveScript/... family but keyed on `code`.
   saveJsScript: (databaseId: string, name: string, code: string) => boolean;
   updateJsScript: (databaseId: string, name: string, code: string) => void;
@@ -772,6 +790,7 @@ export function WorkspaceProvider({
   const [tableFilters, setTableFilters] = useState<Map<string, string>>(
     () => new Map(),
   );
+  const [navHistory, setNavHistory] = useState<NavState>(EMPTY_NAV);
   const [activeJsScriptByDb, setActiveJsScriptByDb] = useState<
     Map<string, string>
   >(() => new Map());
@@ -1104,6 +1123,47 @@ export function WorkspaceProvider({
       clearSqlBuffer,
       tableFilters,
       setTableFilter,
+      navigateTo: (target) => {
+        const from = {
+          tableId: activeTabId ?? "",
+          filter: (activeTabId && tableFilters.get(activeTabId)) || "",
+        };
+        setNavHistory((current) => pushNavigation(current, from, target));
+        setTableFilters((current) =>
+          new Map(current).set(target.tableId, target.filter),
+        );
+        openNode(target.tableId);
+      },
+      goBack: () => {
+        const next = goBackNav(navHistory);
+        if (next === navHistory) {
+          return;
+        }
+        const entry = currentEntry(next);
+        setNavHistory(next);
+        if (entry) {
+          setTableFilters((current) =>
+            new Map(current).set(entry.tableId, entry.filter),
+          );
+          openNode(entry.tableId);
+        }
+      },
+      goForward: () => {
+        const next = goForwardNav(navHistory);
+        if (next === navHistory) {
+          return;
+        }
+        const entry = currentEntry(next);
+        setNavHistory(next);
+        if (entry) {
+          setTableFilters((current) =>
+            new Map(current).set(entry.tableId, entry.filter),
+          );
+          openNode(entry.tableId);
+        }
+      },
+      canGoBack: canGoBack(navHistory),
+      canGoForward: canGoForward(navHistory),
       saveJsScript: (databaseId, name, code) => {
         const trimmed = name.trim();
         const node = nodesById.get(databaseId);
@@ -1253,6 +1313,7 @@ export function WorkspaceProvider({
     clearSqlBuffer,
     tableFilters,
     setTableFilter,
+    navHistory,
     activeJsScriptByDb,
     setActiveJsScript,
     jsBuffers,

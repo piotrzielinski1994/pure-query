@@ -16,6 +16,8 @@ const EXPECTED_BY_SCOPE: Record<ShortcutScope, ShortcutActionId[]> = {
     "toggle-console",
     "toggle-theme",
     "toggle-split-orientation",
+    "nav-back",
+    "nav-forward",
   ],
   tab: ["next-tab", "prev-tab", "close-tab", "close-other-tabs"],
   grid: [

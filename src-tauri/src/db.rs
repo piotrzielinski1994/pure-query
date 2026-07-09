@@ -443,6 +443,9 @@ pub struct ForeignKey {
     pub name: String,
     pub columns: Vec<String>,
     pub referenced_table: String,
+    // The referenced table's schema, so a cross-schema Postgres FK resolves to the correct target
+    // node id. Populated for Postgres; null for MySQL/SQLite (schemaless in this app).
+    pub referenced_schema: Option<String>,
     pub referenced_columns: Vec<String>,
 }
 
@@ -1527,9 +1530,11 @@ fn fold_indexes(rows: &[(String, String, bool, bool)]) -> Vec<IndexInfo> {
 
 // Folds one-row-per-column foreign-key metadata (ordered by constraint name then column position)
 // into grouped `ForeignKey`s. Pure over tuples so composite-FK grouping is unit-testable.
-fn fold_foreign_keys(rows: &[(String, String, String, String)]) -> Vec<ForeignKey> {
+fn fold_foreign_keys(
+    rows: &[(String, String, String, String, Option<String>)],
+) -> Vec<ForeignKey> {
     let mut keys: Vec<ForeignKey> = Vec::new();
-    for (name, column, referenced_table, referenced_column) in rows {
+    for (name, column, referenced_table, referenced_column, referenced_schema) in rows {
         match keys.iter_mut().find(|key| &key.name == name) {
             Some(key) => {
                 key.columns.push(column.clone());
@@ -1539,6 +1544,7 @@ fn fold_foreign_keys(rows: &[(String, String, String, String)]) -> Vec<ForeignKe
                 name: name.clone(),
                 columns: vec![column.clone()],
                 referenced_table: referenced_table.clone(),
+                referenced_schema: referenced_schema.clone(),
                 referenced_columns: vec![referenced_column.clone()],
             }),
         }
@@ -1620,6 +1626,7 @@ async fn read_table_structure(
                 read_text(row, 1)?,
                 read_text(row, 2)?,
                 read_text(row, 3)?,
+                row.try_get::<Option<String>, _>(4).unwrap_or(None),
             ))
         })
         .collect::<Vec<_>>();
@@ -1831,14 +1838,16 @@ pub fn foreign_key_query(engine: DbEngine, has_schema: bool) -> String {
              kcu.column_name::text AS column_name, \
              ccu.table_name::text AS referenced_table, \
              ccu.column_name::text AS referenced_column, \
+             ccu.table_schema::text AS referenced_schema, \
              kcu.ordinal_position AS ordinal \
              FROM information_schema.referential_constraints rc \
              JOIN information_schema.key_column_usage kcu \
                ON kcu.constraint_name = rc.constraint_name \
                AND kcu.constraint_schema = rc.constraint_schema \
-             JOIN information_schema.constraint_column_usage ccu \
-               ON ccu.constraint_name = rc.constraint_name \
-               AND ccu.constraint_schema = rc.constraint_schema \
+             JOIN information_schema.key_column_usage ccu \
+               ON ccu.constraint_name = rc.unique_constraint_name \
+               AND ccu.constraint_schema = rc.unique_constraint_schema \
+               AND ccu.ordinal_position = kcu.position_in_unique_constraint \
              WHERE kcu.table_name = $1 AND {} \
              ORDER BY rc.constraint_name, kcu.ordinal_position",
             if has_schema {
@@ -1851,6 +1860,7 @@ pub fn foreign_key_query(engine: DbEngine, has_schema: bool) -> String {
              kcu.column_name AS column_name, \
              kcu.referenced_table_name AS referenced_table, \
              kcu.referenced_column_name AS referenced_column, \
+             NULL AS referenced_schema, \
              kcu.ordinal_position AS ordinal \
              FROM information_schema.key_column_usage kcu \
              WHERE kcu.table_name = ? AND kcu.table_schema = DATABASE() \
@@ -1858,7 +1868,8 @@ pub fn foreign_key_query(engine: DbEngine, has_schema: bool) -> String {
              ORDER BY kcu.constraint_name, kcu.ordinal_position"
             .to_string(),
         DbEngine::Sqlite => "SELECT id AS name, \"from\" AS column_name, \
-             \"table\" AS referenced_table, \"to\" AS referenced_column, seq AS ordinal \
+             \"table\" AS referenced_table, \"to\" AS referenced_column, \
+             NULL AS referenced_schema, seq AS ordinal \
              FROM pragma_foreign_key_list(?) \
              ORDER BY id, seq"
             .to_string(),
@@ -3678,6 +3689,21 @@ mod tests {
             query.contains("$1"),
             "PG FK query must bind the table as $1: {query}"
         );
+        assert!(
+            query.contains("ccu.table_schema"),
+            "PG FK query must select the referenced schema: {query}"
+        );
+        // A composite FK must NOT fan out into a cartesian product. Joining the referenced side via
+        // constraint_column_usage keyed only on constraint_name pairs every local column with every
+        // referenced column (2-col FK -> 4 rows). Correlate the referenced column by position instead.
+        assert!(
+            !query.contains("constraint_column_usage"),
+            "PG FK query must not use constraint_column_usage (cartesian for composite FKs): {query}"
+        );
+        assert!(
+            query.contains("position_in_unique_constraint"),
+            "PG FK query must correlate the referenced column by position_in_unique_constraint: {query}"
+        );
     }
 
     // AC-003, E-3 - behavior (Postgres FK query pins to $2 when a schema is known and drops the
@@ -3712,6 +3738,10 @@ mod tests {
             query.contains('?'),
             "MySQL FK query must be parameterized: {query}"
         );
+        assert!(
+            query.contains("referenced_schema"),
+            "MySQL FK query must select a (null) referenced_schema column: {query}"
+        );
     }
 
     // AC-003, TC-004, TC-006 - behavior (SQLite FK query uses pragma_foreign_key_list)
@@ -3725,6 +3755,10 @@ mod tests {
         assert!(
             query.contains('?'),
             "SQLite FK query must be parameterized: {query}"
+        );
+        assert!(
+            query.contains("referenced_schema"),
+            "SQLite FK query must select a (null) referenced_schema column: {query}"
         );
     }
 
@@ -3854,12 +3888,25 @@ mod tests {
     #[test]
     fn should_fold_composite_foreign_key_rows_pairing_local_and_referenced_columns() {
         let rows = vec![
-            (s("orders_customer_fk"), s("customer_org"), s("customers"), s("org")),
-            (s("orders_customer_fk"), s("customer_id"), s("customers"), s("id")),
+            (
+                s("orders_customer_fk"),
+                s("customer_org"),
+                s("customers"),
+                s("org"),
+                Some(s("public")),
+            ),
+            (
+                s("orders_customer_fk"),
+                s("customer_id"),
+                s("customers"),
+                s("id"),
+                Some(s("public")),
+            ),
         ];
         let keys = fold_foreign_keys(&rows);
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].referenced_table, "customers");
+        assert_eq!(keys[0].referenced_schema, Some("public".to_string()));
         assert_eq!(
             keys[0].columns,
             vec!["customer_org".to_string(), "customer_id".to_string()]
