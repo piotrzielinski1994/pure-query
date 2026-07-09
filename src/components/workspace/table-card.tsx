@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   copyRowsToClipboard,
+  copySqlToClipboard,
   DataGrid,
   renderCell,
   type Cell,
@@ -46,7 +47,7 @@ import {
   useWorkspace,
   type PendingMutation,
 } from "@/components/workspace/workspace-context";
-import { queryPreview } from "@/components/workspace/query-preview";
+import { queryPreview, rowsToInsertSql } from "@/components/workspace/query-preview";
 import { JsonView } from "@/components/workspace/json-view";
 import { StructureView } from "@/components/workspace/structure-view";
 import {
@@ -184,6 +185,8 @@ function TableView({
   onUndeleteRow,
   onCloneRow,
   onEditDocument,
+  onCopySql,
+  copySqlLabel,
   jsonRows,
   onSaveJson,
 }: {
@@ -202,6 +205,8 @@ function TableView({
   onUndeleteRow?: (rowIndex: number) => void;
   onCloneRow?: (rowIndex: number) => void;
   onEditDocument?: (rowIndex: number) => void;
+  onCopySql?: (rowIndices: number[]) => void;
+  copySqlLabel?: string;
   // The rows the JSON view shows/diffs (saved rows only - drafts stay in the grid). Defaults to
   // `rows` when omitted (the static path, where grid rows and saved rows are the same).
   jsonRows?: Cell[][];
@@ -351,6 +356,8 @@ function TableView({
         onCloneRow={onCloneRow}
         onEditDocument={onEditDocument}
         onCopyRows={copyRows}
+        onCopySql={onCopySql}
+        copySqlLabel={copySqlLabel}
         shortcuts={shortcuts}
       />
     </ScrollArea>
@@ -629,6 +636,19 @@ function LiveTable({
   const gridRows = useMemo(
     () => [...rows, ...draftRows],
     [rows, draftRows],
+  );
+
+  const copySql = useCallback(
+    (rowIndices: number[]) => {
+      const picked = rowIndices
+        .map((index) => gridRows[index])
+        .filter((row): row is Cell[] => row !== undefined);
+      copySqlToClipboard(
+        rowsToInsertSql(preview, tableName, columnNames, picked),
+        picked.length,
+      );
+    },
+    [gridRows, preview, tableName, columnNames],
   );
 
   const isDraftRow = useCallback(
@@ -1045,6 +1065,8 @@ function LiveTable({
             onUndeleteRow={editable ? undeleteRow : undefined}
             onCloneRow={editable ? cloneRow : undefined}
             onEditDocument={editable && isMongo ? openDocEditor : undefined}
+            onCopySql={copySql}
+            copySqlLabel={isMongo ? "Copy insert" : "Copy SQL"}
           />
         )}
       </div>

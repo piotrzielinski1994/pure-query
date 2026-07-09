@@ -630,6 +630,34 @@ describe("TableCard pagination", () => {
     });
   });
 
+  // behavior (F15 AC-007): Copy SQL writes engine-aware INSERT statements for the selected rows.
+  it("should copy the selected rows to the clipboard as INSERT SQL from the row menu", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    mockFetch.mockResolvedValue(rowsResult(["id", "name"], [["1", "Ada"]]));
+    renderLive();
+
+    await screen.findByText("Ada");
+    const row = screen.getByText("Ada").closest("tr") as HTMLElement;
+    await user.click(row);
+    fireEvent.contextMenu(row);
+    await user.click(
+      screen.queryByRole("menuitem", { name: /copy sql/i }) ??
+        screen.getByText(/copy sql/i),
+    );
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        `INSERT INTO "product" ("id", "name") VALUES ('1', 'Ada');`,
+      );
+    });
+    expect(mockToast.success).toHaveBeenCalledWith("Copied 1 row(s) as SQL");
+  });
+
   // behavior (AC-003: changing the filter resets pagination to the first page)
   it("should reset to the first page when the filter changes", async () => {
     const user = userEvent.setup();

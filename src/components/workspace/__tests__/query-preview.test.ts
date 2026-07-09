@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 
-import { queryPreview } from "@/components/workspace/query-preview";
+import {
+  queryPreview,
+  rowsToInsertSql,
+} from "@/components/workspace/query-preview";
 
 describe("queryPreview SQL strategy", () => {
   // behavior (postgres fetch builds a schema-qualified SELECT with WHERE/ORDER/LIMIT/OFFSET)
@@ -61,5 +64,88 @@ describe("queryPreview MongoDB strategy (TC-013)", () => {
     expect(preview.validateFilter('{ "age": { "$gt": 30 } }')).toBeNull();
     expect(preview.validateFilter("{ not json")).toMatch(/valid json/i);
     expect(preview.validateFilter("[1,2,3]")).toMatch(/json object/i);
+  });
+});
+
+describe("rowsToInsertSql (F15 Copy as SQL)", () => {
+  const columns = ["id", "name"];
+  const rows: (string | null)[][] = [
+    ["1", "Ada"],
+    ["2", "Linus"],
+  ];
+
+  // behavior: one INSERT per row, schema-qualified, double-quoted idents, `;`-terminated, \n-joined.
+  it("should build one schema-qualified INSERT per row for a postgres preview", () => {
+    const preview = queryPreview("postgres", "public");
+    expect(rowsToInsertSql(preview, "users", columns, rows)).toBe(
+      [
+        'INSERT INTO "public"."users" ("id", "name") VALUES (\'1\', \'Ada\');',
+        'INSERT INTO "public"."users" ("id", "name") VALUES (\'2\', \'Linus\');',
+      ].join("\n"),
+    );
+  });
+
+  // behavior: with no schema the table is not qualified but still double-quoted.
+  it("should omit the schema qualifier when the postgres preview has no schema", () => {
+    const preview = queryPreview("postgres", null);
+    expect(rowsToInsertSql(preview, "users", columns, [["1", "Ada"]])).toBe(
+      'INSERT INTO "users" ("id", "name") VALUES (\'1\', \'Ada\');',
+    );
+  });
+
+  // behavior: SQLite uses the same double-quote identifier quoting as postgres.
+  it("should double-quote identifiers for a sqlite preview", () => {
+    const preview = queryPreview("sqlite", null);
+    expect(rowsToInsertSql(preview, "users", columns, [["1", "Ada"]])).toBe(
+      'INSERT INTO "users" ("id", "name") VALUES (\'1\', \'Ada\');',
+    );
+  });
+
+  // AC-002 - behavior: MySQL quotes identifiers with backticks.
+  it("should backtick-quote identifiers for a mysql preview", () => {
+    const preview = queryPreview("mysql", null);
+    expect(rowsToInsertSql(preview, "users", columns, [["1", "Ada"]])).toBe(
+      "INSERT INTO `users` (`id`, `name`) VALUES ('1', 'Ada');",
+    );
+  });
+
+  // behavior: columns appear in the given order in each row's value list.
+  it("should preserve the column order in the VALUES list", () => {
+    const preview = queryPreview("postgres", null);
+    expect(
+      rowsToInsertSql(preview, "t", ["b", "a"], [["2", "1"]]),
+    ).toBe('INSERT INTO "t" ("b", "a") VALUES (\'2\', \'1\');');
+  });
+
+  // AC-003 - behavior: a null cell renders NULL unquoted, an embedded single quote is doubled.
+  it("should render NULL unquoted and double an embedded single quote", () => {
+    const preview = queryPreview("postgres", null);
+    expect(
+      rowsToInsertSql(preview, "users", columns, [[null, "O'Brien"]]),
+    ).toBe(
+      'INSERT INTO "users" ("id", "name") VALUES (NULL, \'O\'\'Brien\');',
+    );
+  });
+
+  // AC-004 - behavior: a mongo preview emits db.<coll>.insertOne({ ... }) per document, \n-joined.
+  it("should build a db.coll.insertOne per document for a mongodb preview", () => {
+    const preview = queryPreview("mongodb", null);
+    expect(
+      rowsToInsertSql(preview, "orders", ["status", "total"], [
+        ["paid", "99"],
+        ["open", "10"],
+      ]),
+    ).toBe(
+      [
+        "db.orders.insertOne({ status: \"paid\", total: 99 });",
+        "db.orders.insertOne({ status: \"open\", total: 10 });",
+      ].join("\n"),
+    );
+  });
+
+  // edge - behavior: an empty rows array produces an empty string.
+  it("should return an empty string for no rows", () => {
+    const preview = queryPreview("postgres", "public");
+    expect(rowsToInsertSql(preview, "users", columns, [])).toBe("");
   });
 });
