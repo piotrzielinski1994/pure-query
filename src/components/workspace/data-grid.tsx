@@ -91,21 +91,38 @@ function columnMarkers(meta: ColumnMeta): string {
 // place regardless of which caller (table card / SQL result) triggers it.
 export type CopyFormat = "CSV" | "JSON";
 
+async function writeToClipboard(
+  text: string,
+  successMessage: string,
+): Promise<void> {
+  const copied = await navigator.clipboard
+    .writeText(text)
+    .then(() => true)
+    .catch(() => false);
+  if (copied) {
+    toast.success(successMessage);
+    return;
+  }
+  toast.error("Could not copy to clipboard");
+}
+
 export async function copyRowsToClipboard(
   columns: string[],
   rows: Cell[][],
   format: CopyFormat,
 ): Promise<void> {
   const text = format === "CSV" ? toCsv(columns, rows) : toJson(columns, rows);
-  const copied = await navigator.clipboard
-    .writeText(text)
-    .then(() => true)
-    .catch(() => false);
-  if (copied) {
-    toast.success(`Copied ${rows.length} row(s) as ${format}`);
-    return;
-  }
-  toast.error("Could not copy to clipboard");
+  await writeToClipboard(text, `Copied ${rows.length} row(s) as ${format}`);
+}
+
+// Copies pre-built SQL/insert statements (one per row) to the clipboard with a matching toast. The
+// text is built by the caller via `rowsToInsertSql`; this only owns the write + toast so the copy
+// UX stays identical to the CSV/JSON path.
+export async function copySqlToClipboard(
+  text: string,
+  rowCount: number,
+): Promise<void> {
+  await writeToClipboard(text, `Copied ${rowCount} row(s) as SQL`);
 }
 
 // The single grid shared by the table card and the SQL result pane - they must look
@@ -137,6 +154,8 @@ function DataGridImpl({
   onCloneRow,
   onEditDocument,
   onCopyRows,
+  onCopySql,
+  copySqlLabel = "Copy SQL",
   shortcuts,
 }: {
   columns: string[];
@@ -165,6 +184,12 @@ function DataGridImpl({
   // Copy the given row indices (the current selection) to the clipboard as CSV/JSON. When present,
   // the row menu offers "Copy CSV"/"Copy JSON" for the selection. Absent => no copy items.
   onCopyRows?: (rowIndices: number[], format: CopyFormat) => void;
+  // Copy the given row indices as engine-aware INSERT statements. When present, the row menu offers a
+  // "Copy SQL" item (label overridable via copySqlLabel). Absent => no SQL copy item (SQL result
+  // pane / static path, where there is no single target table).
+  onCopySql?: (rowIndices: number[]) => void;
+  // The SQL-copy item's label - "Copy SQL" for SQL engines, "Copy insert" for MongoDB.
+  copySqlLabel?: string;
   // The resolved shortcut OVERRIDES map, passed in as a prop (not read via useSettingsOptional here)
   // so this memoized grid does NOT subscribe to the Settings context - a chrome toggle rebuilds the
   // settings value, and a context consumer would re-render all 200 rows despite memo. The callers'
@@ -313,7 +338,8 @@ function DataGridImpl({
             // Row context menu only when mutations are wired (onDeleteRow / onEditDocument) and the
             // row is a saved one - draft rows are discarded via the Changes tab, not a delete.
             const hasRowMenu =
-              Boolean(onDeleteRow || onEditDocument || onCopyRows) && !isDraft;
+              Boolean(onDeleteRow || onEditDocument || onCopyRows || onCopySql) &&
+              !isDraft;
             const rowElement = (
               <tr
                 aria-selected={selectedRows.has(row.index)}
@@ -443,6 +469,23 @@ function DataGridImpl({
                                   {`Copy JSON${suffix}`}
                                 </ContextMenuItem>
                               </>
+                            );
+                          })()
+                        : null}
+                      {onCopySql
+                        ? (() => {
+                            const target =
+                              selectedRows.has(row.index) && selectedRows.size > 0
+                                ? [...selectedRows]
+                                : [row.index];
+                            const suffix =
+                              target.length > 1 ? ` (${target.length} rows)` : "";
+                            return (
+                              <ContextMenuItem
+                                onSelect={() => onCopySql(target)}
+                              >
+                                {`${copySqlLabel}${suffix}`}
+                              </ContextMenuItem>
                             );
                           })()
                         : null}

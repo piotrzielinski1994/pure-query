@@ -146,3 +146,23 @@ export function queryPreview(
 ): QueryPreview {
   return engine === "mongodb" ? mongoPreview() : sqlPreview(engine, schema);
 }
+
+// Serialises the given rows as one insert statement per row via the engine's preview strategy - a
+// SQL `INSERT INTO ... VALUES (...)` for the SQL engines, a `db.<coll>.insertOne({...})` for
+// MongoDB - each terminated with `;` and newline-joined. Every column is included per row (column
+// order preserved). No rows -> "".
+export function rowsToInsertSql(
+  preview: QueryPreview,
+  table: string,
+  columns: string[],
+  rows: Cell[][],
+): string {
+  return rows
+    .map((row) => {
+      const values = Object.fromEntries(
+        columns.map((column, index) => [column, row[index] ?? null]),
+      );
+      return `${preview.insert(table, values)};`;
+    })
+    .join("\n");
+}
