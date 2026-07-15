@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/select";
 import { useConnectionActions } from "@/components/workspace/use-connection";
 import { useWorkspace } from "@/components/workspace/workspace-context";
+import { schemaOptions } from "@/lib/workspace/tree-schema";
 import { cn } from "@/lib/utils";
 import type {
   ConnectionConfig,
@@ -308,6 +309,57 @@ function ManualCommitField({
   );
 }
 
+// Radix SelectItem forbids an empty-string value, so "All schemas" (the null default schema) uses
+// a sentinel value mapped back to null on change.
+const ALL_SCHEMAS = "__all_schemas__";
+
+// Per-database Default schema selector: pins the sidebar to one schema (bare labels, others hidden).
+// Options are the connected database's live schemas (from its fetched tables) plus "All schemas".
+// The trigger shows the SAVED value verbatim even when it is not among the live options (a stale /
+// disconnected schema stays visible as the cue). Postgres-only in effect - MySQL/SQLite/Mongo carry
+// no schema level, so the list is just "All schemas".
+function DefaultSchemaField({
+  nodeId,
+  defaultSchema,
+  schemas,
+}: {
+  nodeId: string;
+  defaultSchema: string | null;
+  schemas: string[];
+}) {
+  const { setDatabaseDefaultSchema } = useWorkspace();
+  // Include a stale saved schema (not in the live list) so its option renders and stays selectable.
+  const options =
+    defaultSchema !== null && !schemas.includes(defaultSchema)
+      ? [...schemas, defaultSchema]
+      : schemas;
+  return (
+    <Field label="Default schema" htmlFor="conn-default-schema">
+      <Select
+        value={defaultSchema ?? ALL_SCHEMAS}
+        onValueChange={(value) =>
+          setDatabaseDefaultSchema(
+            nodeId,
+            value === ALL_SCHEMAS ? null : value,
+          )
+        }
+      >
+        <SelectTrigger id="conn-default-schema" className="w-full">
+          {defaultSchema ?? "All schemas"}
+        </SelectTrigger>
+        <SelectContent position="popper">
+          <SelectItem value={ALL_SCHEMAS}>All schemas</SelectItem>
+          {options.map((schema) => (
+            <SelectItem key={schema} value={schema}>
+              {schema}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
 function PasswordField({
   value,
   onChange,
@@ -393,6 +445,11 @@ function ConnectionForm({ node }: { node: DatabaseNode }) {
       <AccentField nodeId={nodeId} accentColor={node.accentColor} />
       <ReadOnlyField nodeId={nodeId} readOnly={node.readOnly} />
       <ManualCommitField nodeId={nodeId} manualCommit={node.manualCommit} />
+      <DefaultSchemaField
+        nodeId={nodeId}
+        defaultSchema={node.defaultSchema}
+        schemas={schemaOptions(node.tables)}
+      />
       <Field label="Type" htmlFor="conn-engine">
         <Select
           value={form.engine}

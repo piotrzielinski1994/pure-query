@@ -47,6 +47,7 @@ const tree: TreeNode[] = [
     accentColor: null,
     readOnly: false,
     manualCommit: false,
+    defaultSchema: null,
     id: "db-ppp",
     name: "ppp",
     engine: "postgres",

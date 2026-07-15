@@ -161,6 +161,10 @@ type DatabaseNodeBase = {
   // transaction on a pinned connection, reads see the uncommitted changes, and a Commit/Rollback
   // control finishes it. SQL engines only (MongoDB has no manual-commit). Default false.
   manualCommit: boolean;
+  // Optional default schema (Postgres). When set, the sidebar shows ONLY this schema's tables
+  // (strict - a stale value shows none) and renders them with the bare name (never `schema.table`).
+  // Tree DISPLAY only; the SQL editor/autocomplete are unaffected. null = all schemas. Default null.
+  defaultSchema: string | null;
   tables: TableNode[];
   views: ViewObject[];
   sql: string;

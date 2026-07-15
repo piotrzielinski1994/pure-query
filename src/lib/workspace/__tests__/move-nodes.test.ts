@@ -40,6 +40,7 @@ const database = (id: string): DatabaseNode => ({
   accentColor: null,
   readOnly: false,
   manualCommit: false,
+  defaultSchema: null,
 });
 
 const folder = (id: string, children: TreeNode[]): FolderNode => ({

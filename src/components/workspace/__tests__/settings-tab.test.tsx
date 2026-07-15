@@ -79,7 +79,9 @@ describe("SettingsTab", () => {
   // AC-001 - behavior (form controls present)
   it("should render an engine selector, host/port/database/user/password inputs and a Connect button", () => {
     renderSettings();
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: /type/i }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /host/i })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /port/i })).toBeInTheDocument();
     expect(
@@ -97,7 +99,9 @@ describe("SettingsTab", () => {
   // AC-002, AC-001 - behavior (engine selector shows the node's engine)
   it("should show the active database's engine in the selector trigger", () => {
     renderSettings();
-    expect(screen.getByRole("combobox")).toHaveTextContent(/postgres/i);
+    expect(
+      screen.getByRole("combobox", { name: /type/i }),
+    ).toHaveTextContent(/postgres/i);
   });
 
   // AC-002 - behavior (form seeded from active node)
@@ -438,6 +442,7 @@ function sqliteNode(file: string): DatabaseNode {
     accentColor: null,
     readOnly: false,
     manualCommit: false,
+    defaultSchema: null,
     engine: "sqlite",
     file,
     tables: [],
@@ -638,6 +643,7 @@ function mongoNode(uri?: string): DatabaseNode {
     accentColor: null,
     readOnly: false,
     manualCommit: false,
+    defaultSchema: null,
     engine: "mongodb",
     host: "localhost",
     port: 27017,
@@ -734,7 +740,9 @@ describe("SettingsTab MongoDB engine (TC-001, TC-002)", () => {
   // TC-001, AC-001 - behavior (the engine selector shows MongoDB)
   it("should show MongoDB in the engine selector for a mongodb node", () => {
     renderMongoSettings();
-    expect(screen.getByRole("combobox")).toHaveTextContent(/mongodb/i);
+    expect(
+      screen.getByRole("combobox", { name: /type/i }),
+    ).toHaveTextContent(/mongodb/i);
   });
 
   // TC-002, AC-002 - behavior (Connect sends the mongodb engine + fields + uri to the backend)
