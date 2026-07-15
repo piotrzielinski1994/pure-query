@@ -286,6 +286,17 @@ type MockDataContextValue = {
 
 const MockDataContext = createContext<MockDataContextValue | null>(null);
 
+// The table quick-open (`Mod+P`) overlay's open flag. Isolated like MockData: opening it must not
+// rebuild the workspace value (which the heavy TableCard reads) - only this tiny value + the
+// overlay. The searchable entries are derived from `tree` at the call site, not stored here.
+type QuickOpenContextValue = {
+  isQuickOpenOpen: boolean;
+  openQuickOpen: () => void;
+  closeQuickOpen: () => void;
+};
+
+const QuickOpenContext = createContext<QuickOpenContextValue | null>(null);
+
 // The application file-log stream (F18). Lines are pushed from tauri-plugin-log's Webview target
 // and can arrive on every query/mutation, so - like the chrome/view toggles above - this lives in
 // its OWN context: an append must NOT rebuild the workspace value (which the heavy TableCard reads),
@@ -808,6 +819,7 @@ type WorkspaceProviderProps = {
   initialConsoleHidden?: boolean;
   initialJsonView?: boolean;
   initialMockDataOpen?: boolean;
+  initialQuickOpenOpen?: boolean;
   initialSplitOrientation?: SplitOrientation;
   initialLayouts?: Settings["layouts"];
   // The workspace persists only the UI-chrome slice of Settings; the theme is owned by the
@@ -830,6 +842,7 @@ export function WorkspaceProvider({
   initialConsoleHidden = false,
   initialJsonView = false,
   initialMockDataOpen = false,
+  initialQuickOpenOpen = false,
   initialSplitOrientation = "horizontal",
   initialLayouts = {},
   onPersist,
@@ -918,6 +931,7 @@ export function WorkspaceProvider({
   const [isJsonView, setIsJsonView] = useState(initialJsonView);
   const [isStructureView, setIsStructureView] = useState(false);
   const [isMockDataOpen, setIsMockDataOpen] = useState(initialMockDataOpen);
+  const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(initialQuickOpenOpen);
 
   // These actions are consumed by the heavy, memoized DataGrid (via table-card's commitEdit). They
   // use functional setters only, so they have no reactive deps - pinning their identity with
@@ -1510,6 +1524,15 @@ export function WorkspaceProvider({
     [isMockDataOpen],
   );
 
+  const quickOpenValue = useMemo<QuickOpenContextValue>(
+    () => ({
+      isQuickOpenOpen,
+      openQuickOpen: () => setIsQuickOpenOpen(true),
+      closeQuickOpen: () => setIsQuickOpenOpen(false),
+    }),
+    [isQuickOpenOpen],
+  );
+
   const logLinesValue = useMemo<LogLinesContextValue>(
     () => ({ logLines, appendLogLine, clearLogLines }),
     [logLines, appendLogLine, clearLogLines],
@@ -1583,9 +1606,11 @@ export function WorkspaceProvider({
         <JsonViewContext.Provider value={jsonViewValue}>
           <StructureViewContext.Provider value={structureViewValue}>
             <MockDataContext.Provider value={mockDataValue}>
-              <LogLinesContext.Provider value={logLinesValue}>
-                {children}
-              </LogLinesContext.Provider>
+              <QuickOpenContext.Provider value={quickOpenValue}>
+                <LogLinesContext.Provider value={logLinesValue}>
+                  {children}
+                </LogLinesContext.Provider>
+              </QuickOpenContext.Provider>
             </MockDataContext.Provider>
           </StructureViewContext.Provider>
         </JsonViewContext.Provider>
@@ -1640,6 +1665,17 @@ export function useMockData(): MockDataContextValue {
       isMockDataOpen: false,
       openMockData: () => {},
       closeMockData: () => {},
+    }
+  );
+}
+
+// Optional (like the other isolated hooks) so a component rendered outside the provider still works.
+export function useQuickOpen(): QuickOpenContextValue {
+  return (
+    useContext(QuickOpenContext) ?? {
+      isQuickOpenOpen: false,
+      openQuickOpen: () => {},
+      closeQuickOpen: () => {},
     }
   );
 }
