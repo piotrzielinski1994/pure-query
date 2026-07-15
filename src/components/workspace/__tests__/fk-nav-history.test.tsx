@@ -70,6 +70,7 @@ const pgTree: TreeNode[] = [
     accentColor: null,
     readOnly: false,
     manualCommit: false,
+    defaultSchema: null,
     engine: "postgres",
     host: "localhost",
     port: 5432,

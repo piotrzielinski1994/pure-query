@@ -146,6 +146,7 @@ function mongoNode(): DatabaseNode {
     accentColor: null,
     readOnly: false,
     manualCommit: false,
+    defaultSchema: null,
     engine: "mongodb",
     host: "localhost",
     port: 27017,

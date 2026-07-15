@@ -46,6 +46,7 @@ const editedDatabaseTree: TreeNode[] = [
     accentColor: null,
     readOnly: false,
     manualCommit: false,
+    defaultSchema: null,
     engine: "mysql",
     host: "edited.host",
     port: 3306,

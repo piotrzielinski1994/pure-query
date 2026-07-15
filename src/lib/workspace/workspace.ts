@@ -21,6 +21,7 @@ export type PersistedNetworkDatabase = {
   accentColor?: string;
   readOnly?: boolean;
   manualCommit?: boolean;
+  defaultSchema?: string;
   savedScripts?: SavedScript[];
   savedJsScripts?: SavedJsScript[];
   variables?: Variable[];
@@ -35,6 +36,7 @@ export type PersistedSqliteDatabase = {
   accentColor?: string;
   readOnly?: boolean;
   manualCommit?: boolean;
+  defaultSchema?: string;
   savedScripts?: SavedScript[];
   savedJsScripts?: SavedJsScript[];
   variables?: Variable[];
@@ -54,6 +56,7 @@ export type PersistedMongoDatabase = {
   accentColor?: string;
   readOnly?: boolean;
   manualCommit?: boolean;
+  defaultSchema?: string;
   savedScripts?: SavedScript[];
   savedJsScripts?: SavedJsScript[];
   variables?: Variable[];
@@ -128,6 +131,16 @@ function mergeManualCommit(value: unknown): { manualCommit: true } | undefined {
   return value === true ? { manualCommit: true } : undefined;
 }
 
+// A persisted defaultSchema is kept only when it is a NON-EMPTY string; an empty string, null, or
+// non-string is dropped so the database loads with no schema filter (mirrors mergeReadOnly).
+function mergeDefaultSchema(
+  value: unknown,
+): { defaultSchema: string } | undefined {
+  return typeof value === "string" && value.length > 0
+    ? { defaultSchema: value }
+    : undefined;
+}
+
 // Keeps only the saved-script entries that are records with string `name` + `sql`; anything else
 // (missing field, non-record, non-array payload) is dropped. Returns the field only when the cleaned
 // list is non-empty, so an empty list is omitted from the persisted shape (mirrors mergeAccentColor).
@@ -189,6 +202,7 @@ function mergeDatabase(value: Record<string, unknown>): PersistedDatabase | null
   const accent = mergeAccentColor(value.accentColor);
   const readOnly = mergeReadOnly(value.readOnly);
   const manualCommit = mergeManualCommit(value.manualCommit);
+  const defaultSchema = mergeDefaultSchema(value.defaultSchema);
   const scripts = mergeSavedScripts(value.savedScripts);
   const jsScripts = mergeSavedJsScripts(value.savedJsScripts);
   const variables = mergeVariables(value.variables);
@@ -203,6 +217,7 @@ function mergeDatabase(value: Record<string, unknown>): PersistedDatabase | null
           ...accent,
           ...readOnly,
           ...manualCommit,
+          ...defaultSchema,
           ...scripts,
           ...jsScripts,
           ...variables,
@@ -235,6 +250,7 @@ function mergeDatabase(value: Record<string, unknown>): PersistedDatabase | null
       ...accent,
       ...readOnly,
       ...manualCommit,
+      ...defaultSchema,
       ...scripts,
       ...jsScripts,
       ...variables,
@@ -264,6 +280,7 @@ function mergeDatabase(value: Record<string, unknown>): PersistedDatabase | null
     ...accent,
     ...readOnly,
     ...manualCommit,
+    ...defaultSchema,
     ...scripts,
     ...jsScripts,
     ...variables,
@@ -329,6 +346,7 @@ function hydrateNode(node: PersistedNode): TreeNode {
     accentColor: node.accentColor ?? null,
     readOnly: node.readOnly ?? false,
     manualCommit: node.manualCommit ?? false,
+    defaultSchema: node.defaultSchema ?? null,
     tables: [],
     views: [],
     sql: "",
@@ -387,6 +405,10 @@ function dehydrateNode(node: TreeNode): PersistedNode[] {
   const manualCommit = node.manualCommit
     ? { manualCommit: true as const }
     : undefined;
+  const defaultSchema =
+    node.defaultSchema && node.defaultSchema.length > 0
+      ? { defaultSchema: node.defaultSchema }
+      : undefined;
   const scripts =
     node.savedScripts.length > 0
       ? { savedScripts: node.savedScripts }
@@ -408,6 +430,7 @@ function dehydrateNode(node: TreeNode): PersistedNode[] {
         ...accent,
         ...readOnly,
         ...manualCommit,
+        ...defaultSchema,
         ...scripts,
         ...jsScripts,
         ...variables,
@@ -430,6 +453,7 @@ function dehydrateNode(node: TreeNode): PersistedNode[] {
         ...accent,
         ...readOnly,
         ...manualCommit,
+        ...defaultSchema,
         ...scripts,
         ...jsScripts,
         ...variables,
@@ -450,6 +474,7 @@ function dehydrateNode(node: TreeNode): PersistedNode[] {
       ...accent,
       ...readOnly,
       ...manualCommit,
+      ...defaultSchema,
       ...scripts,
       ...jsScripts,
       ...variables,

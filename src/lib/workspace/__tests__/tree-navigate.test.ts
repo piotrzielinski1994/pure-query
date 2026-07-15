@@ -47,6 +47,7 @@ const database = (id: string, tables: TableNode[] = []): DatabaseNode => ({
   accentColor: null,
   readOnly: false,
   manualCommit: false,
+  defaultSchema: null,
 });
 
 const table = (id: string): TableNode => ({

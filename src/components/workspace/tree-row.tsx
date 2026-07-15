@@ -8,6 +8,7 @@ import { ChevronDown, ChevronRight, Table } from "lucide-react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { EngineIcon } from "@/components/workspace/engine-icon";
 import { cn } from "@/lib/utils";
+import { visibleTables } from "@/lib/workspace/tree-schema";
 import { useWorkspace } from "@/components/workspace/workspace-context";
 import { useConnectionActions } from "@/components/workspace/use-connection";
 import { useRequestDelete } from "@/components/workspace/delete-request-context";
@@ -528,8 +529,12 @@ function DatabaseRow({ node, depth }: { node: DatabaseNode; depth: number }) {
       {isExpanded && isConnected ? (
         <ul role="group">
           {(() => {
-            const multiSchema = isMultiSchema(node.tables);
-            return node.tables.map((table) => (
+            const tables = visibleTables(node.tables, node.defaultSchema);
+            // A default schema pins the tree to one schema, so the prefix is redundant - show bare
+            // names; otherwise qualify only when the (unfiltered) catalog spans multiple schemas.
+            const multiSchema =
+              node.defaultSchema === null && isMultiSchema(tables);
+            return tables.map((table) => (
               <TableRow
                 key={table.id}
                 node={table}

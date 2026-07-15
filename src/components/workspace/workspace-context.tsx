@@ -168,6 +168,7 @@ type WorkspaceContextValue = {
   renameDatabase: (id: string, name: string) => void;
   setDatabaseAccent: (id: string, color: string | null) => void;
   setDatabaseReadOnly: (id: string, readOnly: boolean) => void;
+  setDatabaseDefaultSchema: (id: string, defaultSchema: string | null) => void;
   setDatabaseManualCommit: (id: string, manualCommit: boolean) => void;
   setDatabaseVariables: (id: string, variables: Variable[]) => void;
   saveScript: (databaseId: string, name: string, sql: string) => boolean;
@@ -415,6 +416,7 @@ function applyDatabaseConfig(
         accentColor,
         readOnly,
         manualCommit,
+        defaultSchema,
         tables,
         views,
         sql,
@@ -430,6 +432,7 @@ function applyDatabaseConfig(
         accentColor,
         readOnly,
         manualCommit,
+        defaultSchema,
         tables,
         views,
         sql,
@@ -452,6 +455,7 @@ function newDatabaseNode(id: string): DatabaseNode {
     accentColor: null,
     readOnly: false,
     manualCommit: false,
+    defaultSchema: null,
     engine: "postgres",
     host: "localhost",
     port: 5432,
@@ -587,6 +591,25 @@ function setManualCommit(
     }
     if (node.kind === "database" && node.id === databaseId) {
       return { ...node, manualCommit };
+    }
+    return node;
+  });
+}
+
+function setDefaultSchema(
+  nodes: TreeNode[],
+  databaseId: string,
+  defaultSchema: string | null,
+): TreeNode[] {
+  return nodes.map((node) => {
+    if (node.kind === "folder") {
+      return {
+        ...node,
+        children: setDefaultSchema(node.children, databaseId, defaultSchema),
+      };
+    }
+    if (node.kind === "database" && node.id === databaseId) {
+      return { ...node, defaultSchema };
     }
     return node;
   });
@@ -1240,6 +1263,8 @@ export function WorkspaceProvider({
         setTree((current) => setAccentColor(current, id, color)),
       setDatabaseReadOnly: (id, readOnly) =>
         setTree((current) => setReadOnly(current, id, readOnly)),
+      setDatabaseDefaultSchema: (id, defaultSchema) =>
+        setTree((current) => setDefaultSchema(current, id, defaultSchema)),
       setDatabaseManualCommit: (id, manualCommit) =>
         setTree((current) => setManualCommit(current, id, manualCommit)),
       setDatabaseVariables: (id, variables) =>

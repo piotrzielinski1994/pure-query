@@ -153,6 +153,7 @@ export const appDb: DatabaseNode = {
   accentColor: null,
   readOnly: false,
   manualCommit: false,
+  defaultSchema: null,
 };
 
 // folder "staging" > database "admin_db" (password variant; script "" -> Script empty E-7)
@@ -177,6 +178,7 @@ export const adminDb: DatabaseNode = {
   accentColor: "#dc262650",
   readOnly: false,
   manualCommit: false,
+  defaultSchema: null,
 };
 
 // root-level leaf "scratch_db" (none; no tables E-5; no views/script E-7; zero-row SQL E-6)
@@ -201,6 +203,7 @@ export const scratchDb: DatabaseNode = {
   accentColor: null,
   readOnly: false,
   manualCommit: false,
+  defaultSchema: null,
 };
 
 export const fixtureTree: TreeNode[] = [
