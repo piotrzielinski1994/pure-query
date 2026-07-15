@@ -174,7 +174,7 @@ export const adminDb: DatabaseNode = {
   variables: [],
   result: adminResult,
   // colored database (accent-border feature): the red "prod" preset (50% alpha) its tables inherit.
-  accentColor: "#dc262680",
+  accentColor: "#dc262650",
   readOnly: false,
   manualCommit: false,
 };

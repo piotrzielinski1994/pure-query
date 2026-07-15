@@ -1,21 +1,21 @@
-import { useState, type ReactNode } from "react";
-import { Eye, EyeOff } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
-import { useWorkspace } from "@/components/workspace/workspace-context";
 import { useConnectionActions } from "@/components/workspace/use-connection";
+import { useWorkspace } from "@/components/workspace/workspace-context";
+import { cn } from "@/lib/utils";
 import type {
   ConnectionConfig,
   DatabaseNode,
   DbEngine,
 } from "@/lib/workspace/model";
+import { Eye, EyeOff } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 const ENGINE_LABELS: Record<DbEngine, string> = {
   postgres: "Postgres",
@@ -126,9 +126,9 @@ const HEX_COLOR = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i;
 // can still type any #rrggbb(aa) for full control.
 const ACCENT_PRESETS: { label: string; value: string | null }[] = [
   { label: "None", value: null },
-  { label: "Green", value: "#16a34a80" },
-  { label: "Blue", value: "#2563eb80" },
-  { label: "Red", value: "#dc262680" },
+  { label: "Green", value: "#16a34a50" },
+  { label: "Blue", value: "#2563eb50" },
+  { label: "Red", value: "#dc262650" },
 ];
 
 function AccentField({
@@ -177,7 +177,9 @@ function AccentField({
               aria-label={preset.label}
               aria-pressed={isActive}
               onClick={() => setDatabaseAccent(nodeId, preset.value)}
-              style={preset.value ? { backgroundColor: preset.value } : undefined}
+              style={
+                preset.value ? { backgroundColor: preset.value } : undefined
+              }
               className={cn(
                 "flex h-9 w-9 shrink-0 items-center justify-center border border-l-0 border-border text-[10px] first:border-l",
                 // relative+z so the active swatch's ring draws over its flush neighbours instead
@@ -369,9 +371,14 @@ function ConnectionForm({ node }: { node: DatabaseNode }) {
     }
     // Mongo connects with EITHER a non-empty uri (which overrides everything) OR host + database.
     if (isMongo) {
-      return form.uri.trim().length > 0 || (form.host.length > 0 && form.database.length > 0);
+      return (
+        form.uri.trim().length > 0 ||
+        (form.host.length > 0 && form.database.length > 0)
+      );
     }
-    return form.host.length > 0 && form.database.length > 0 && form.user.length > 0;
+    return (
+      form.host.length > 0 && form.database.length > 0 && form.user.length > 0
+    );
   })();
 
   return (

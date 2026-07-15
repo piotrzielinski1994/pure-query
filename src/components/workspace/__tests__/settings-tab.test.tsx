@@ -1,19 +1,19 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WorkspaceProvider } from "@/components/workspace/workspace-context";
+import { fixtureTree } from "@/components/workspace/__tests__/fixtures";
 import { SettingsTab } from "@/components/workspace/settings-tab";
 import { SidebarTree } from "@/components/workspace/sidebar-tree";
 import { __resetInFlightConnects } from "@/components/workspace/use-connection";
-import { fixtureTree } from "@/components/workspace/__tests__/fixtures";
+import { WorkspaceProvider } from "@/components/workspace/workspace-context";
+import { cancelConnect, connectDatabase } from "@/lib/tauri";
 import type {
   DatabaseNode,
   QueryResult,
   TreeNode,
 } from "@/lib/workspace/model";
-import { connectDatabase, cancelConnect } from "@/lib/tauri";
 import { toast } from "sonner";
 
 vi.mock("@/lib/tauri", () => ({
@@ -164,7 +164,13 @@ describe("SettingsTab", () => {
   // AC-003, TC-001 - behavior (Connect calls the backend once with the form config)
   it("should invoke connectDatabase once with the current form config when Connect is clicked", async () => {
     const user = userEvent.setup();
-    mockConnect.mockResolvedValueOnce({ tables: [{ schema: null, name: "a" }, { schema: null, name: "b" }], views: [] });
+    mockConnect.mockResolvedValueOnce({
+      tables: [
+        { schema: null, name: "a" },
+        { schema: null, name: "b" },
+      ],
+      views: [],
+    });
     renderSettings();
 
     await user.click(screen.getByRole("button", { name: /^connect$/i }));
@@ -192,7 +198,9 @@ describe("SettingsTab", () => {
 
     await user.click(screen.getByRole("button", { name: /^connect$/i }));
 
-    const cancelButton = await screen.findByRole("button", { name: /^cancel$/i });
+    const cancelButton = await screen.findByRole("button", {
+      name: /^cancel$/i,
+    });
     await user.click(cancelButton);
 
     expect(mockCancel).toHaveBeenCalledWith("db-admin");
@@ -218,7 +226,13 @@ describe("SettingsTab", () => {
   // AC-004, TC-001 - side-effect-contract (success toast reports the table count)
   it("should fire a success toast reporting the table count when the connect resolves", async () => {
     const user = userEvent.setup();
-    mockConnect.mockResolvedValueOnce({ tables: [{ schema: null, name: "a" }, { schema: null, name: "b" }], views: [] });
+    mockConnect.mockResolvedValueOnce({
+      tables: [
+        { schema: null, name: "a" },
+        { schema: null, name: "b" },
+      ],
+      views: [],
+    });
     renderSettings();
 
     await user.click(screen.getByRole("button", { name: /^connect$/i }));
@@ -337,7 +351,13 @@ describe("SettingsTab connect flow updates the sidebar", () => {
   // AC-004, TC-001 - behavior (sidebar tables replaced by fetched names)
   it("should reveal the fetched table names in the sidebar on a successful connect", async () => {
     // db-admin is restored expanded, so the sidebar row auto-connects on mount (no Connect click).
-    mockConnect.mockResolvedValueOnce({ tables: [{ schema: null, name: "fetched_one" }, { schema: null, name: "fetched_two" }], views: [] });
+    mockConnect.mockResolvedValueOnce({
+      tables: [
+        { schema: null, name: "fetched_one" },
+        { schema: null, name: "fetched_two" },
+      ],
+      views: [],
+    });
     renderSettings({
       activeTabId: "db-admin",
       expanded: ["folder-staging", "db-admin"],
@@ -460,9 +480,9 @@ describe("SettingsTab SQLite engine", () => {
   // TC-001, AC-002 - behavior (sqlite form seeds the file path from the node)
   it("should seed the Database file field from the active sqlite node", () => {
     renderSqliteSettings("/var/db/app.sqlite");
-    expect(
-      screen.getByLabelText("Database file", { exact: true }),
-    ).toHaveValue("/var/db/app.sqlite");
+    expect(screen.getByLabelText("Database file", { exact: true })).toHaveValue(
+      "/var/db/app.sqlite",
+    );
   });
 
   // TC-002, AC-002 - behavior (postgres engine keeps the network fields, no Database file)
@@ -488,9 +508,7 @@ describe("SettingsTab SQLite engine", () => {
   // TC-003, AC-003 - behavior (non-empty file path enables Connect)
   it("should enable Connect when the sqlite file path is non-empty", () => {
     renderSqliteSettings("/Users/me/data/app.sqlite");
-    expect(
-      screen.getByRole("button", { name: /^connect$/i }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^connect$/i })).toBeEnabled();
   });
 
   // TC-003, AC-003 - behavior (clearing then typing toggles the gate)
@@ -548,12 +566,8 @@ describe("SettingsTab accent color (TC-001, TC-002, TC-003)", () => {
   // AC-001 - behavior (the native color input + hex text field are present)
   it("should render a native color input and a hex text field", () => {
     const { container } = renderAccent("db-scratch");
-    expect(
-      container.querySelector('input[type="color"]'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("textbox", { name: /hex/i }),
-    ).toBeInTheDocument();
+    expect(container.querySelector('input[type="color"]')).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /hex/i })).toBeInTheDocument();
   });
 
   // AC-002, TC-001 - behavior (clicking Red sets the accent; Red becomes pressed, hex shows it)
@@ -573,7 +587,7 @@ describe("SettingsTab accent color (TC-001, TC-002, TC-003)", () => {
       "true",
     );
     expect(screen.getByRole("textbox", { name: /hex/i })).toHaveValue(
-      "#dc262680",
+      "#dc262650",
     );
   });
 
@@ -676,10 +690,14 @@ describe("SettingsTab MongoDB engine (TC-001, TC-002)", () => {
 
   // TC-001, AC-002 - behavior (the uri override is seeded from the node when present)
   it("should seed the Connection string field from the node uri when present", () => {
-    renderMongoSettings("mongodb://app_user:m0ngo-pw@localhost:27017/shop?authSource=admin");
+    renderMongoSettings(
+      "mongodb://app_user:m0ngo-pw@localhost:27017/shop?authSource=admin",
+    );
     expect(
       screen.getByRole("textbox", { name: /connection string/i }),
-    ).toHaveValue("mongodb://app_user:m0ngo-pw@localhost:27017/shop?authSource=admin");
+    ).toHaveValue(
+      "mongodb://app_user:m0ngo-pw@localhost:27017/shop?authSource=admin",
+    );
   });
 
   // TC-002, AC-003 - behavior (host+database set -> Connect enabled even with an empty uri)
@@ -722,7 +740,10 @@ describe("SettingsTab MongoDB engine (TC-001, TC-002)", () => {
   // TC-002, AC-002 - behavior (Connect sends the mongodb engine + fields + uri to the backend)
   it("should invoke connectDatabase with the mongodb engine and its fields when Connect is clicked", async () => {
     const user = userEvent.setup();
-    mockConnect.mockResolvedValueOnce({ tables: [{ schema: null, name: "users" }], views: [] });
+    mockConnect.mockResolvedValueOnce({
+      tables: [{ schema: null, name: "users" }],
+      views: [],
+    });
     renderMongoSettings("mongodb://app_user:m0ngo-pw@localhost:27017/shop");
 
     await user.click(screen.getByRole("button", { name: /^connect$/i }));
@@ -760,9 +781,9 @@ describe("SettingsTab engine switch keeps both shapes (TC-011)", () => {
   // TC-011, AC-002, E-5 - behavior (a sqlite node renders its file value and no stale host)
   it("should keep the sqlite file value when rendering a sqlite node", () => {
     renderSqliteSettings("/Users/me/data/app.sqlite");
-    expect(
-      screen.getByLabelText("Database file", { exact: true }),
-    ).toHaveValue("/Users/me/data/app.sqlite");
+    expect(screen.getByLabelText("Database file", { exact: true })).toHaveValue(
+      "/Users/me/data/app.sqlite",
+    );
     expect(screen.queryByRole("textbox", { name: /host/i })).toBeNull();
   });
 });

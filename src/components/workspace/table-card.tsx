@@ -1481,14 +1481,6 @@ export function TableCard() {
             defaultTable={activeNode.name}
           />
         </div>
-        <Button
-          type="button"
-          aria-label="Run filter"
-          onClick={applyFilter}
-          className="h-full rounded-none border-0 border-l border-l-border px-3"
-        >
-          <Search className="size-4" />
-        </Button>
         {isLive ? (
           <Button
             type="button"
@@ -1500,6 +1492,14 @@ export function TableCard() {
             <RefreshCw className="size-4" />
           </Button>
         ) : null}
+        <Button
+          type="button"
+          aria-label="Run filter"
+          onClick={applyFilter}
+          className="h-full rounded-none border-0 border-l border-l-border px-3"
+        >
+          <Search className="size-4" />
+        </Button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
         {isLive && config && databaseId ? (

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tab, TabBar } from "@/components/workspace/tab-bar";
@@ -61,17 +61,9 @@ function clearForTab(
   return actions.clearConsole;
 }
 
-// Whole-line tint by level: error red, warn amber, info/debug/trace muted grey. info is muted (not
-// foreground) so the plain message words (`[dbui_lib][INFO] connect`) read grey while the kv VALUES,
-// which set their own text-foreground, stand out white. error/warn keep their signal color.
-const LEVEL_LINE_CLASS: Record<LogLevel, string> = {
-  error: "text-red-600 dark:text-red-400",
-  warn: "text-amber-600 dark:text-amber-400",
-  info: "text-muted-foreground",
-  debug: "text-muted-foreground",
-  trace: "text-muted-foreground",
-};
-
+// The message text is ALWAYS muted grey regardless of level - only the level BADGE carries the
+// signal color (see LEVEL_BADGE_CLASS), so an error is identified by its red badge alone, not a
+// red-tinted line. The kv VALUES set their own text-foreground so they still stand out white.
 const LEVEL_BADGE_CLASS: Record<LogLevel, string> = {
   error: "text-red-600 dark:text-red-400",
   warn: "text-amber-600 dark:text-amber-400",
@@ -86,7 +78,7 @@ const LEVEL_BADGE_CLASS: Record<LogLevel, string> = {
 function LogLineRow({ line }: { line: LogLine }) {
   const parts = line.message.split(/(\s+)/);
   return (
-    <li className={cn("py-0.5 break-all", LEVEL_LINE_CLASS[line.level])}>
+    <li className="py-0.5 break-all text-muted-foreground">
       {line.timestamp ? (
         <span className="text-muted-foreground">{line.timestamp} </span>
       ) : null}
@@ -245,15 +237,17 @@ export function Console() {
             ) ? (
               <button
                 type="button"
+                aria-label="Clear"
+                title="Clear"
                 onClick={clearForTab(tab, {
                   clearHistory,
                   discardAllPendingEdits,
                   clearConsole,
                   clearLogLines,
                 })}
-                className="px-3 py-1.5 tracking-wide text-muted-foreground uppercase hover:text-foreground"
+                className="px-3 py-1.5 text-muted-foreground hover:text-foreground"
               >
-                Clear
+                <Trash2 className="size-3.5" />
               </button>
             ) : null}
           </div>
