@@ -343,7 +343,7 @@ describe("resolveTreeKey - modifier leak / unknown guard", () => {
 
 describe("resolveTreeKey - custom bindings (rebindable)", () => {
   // B behavior: the resolver is data-driven off the resolved bindings, so a rebound key wins and the
-  // old default stops firing. detectPlatform is "mac" here, but dbui's matcher treats Mod = meta ||
+  // old default stops firing. detectPlatform is "mac" here, but purequery's matcher treats Mod = meta ||
   // ctrl, so a "Mod+..." binding fires on Ctrl.
   it("should honour a rebound tree-move-down key and drop the old default", () => {
     const custom = resolveShortcuts({ "tree-move-down": ["Mod+Shift+ArrowDown"] });

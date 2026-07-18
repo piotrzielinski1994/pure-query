@@ -26,7 +26,7 @@ the MongoDB card gains one alongside its Query tab.
 
 As a developer exploring a database, I want to write small JavaScript scripts that query the connected
 database and print / tabulate the results, so I can do multi-step reads and light data transforms
-(loop over tables, reshape rows, compute summaries) without leaving dbui or hand-writing one big SQL
+(loop over tables, reshape rows, compute summaries) without leaving purequery or hand-writing one big SQL
 statement.
 
 ### Approved decisions (from brainstorming)

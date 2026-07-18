@@ -31,7 +31,7 @@ is just `BEGIN TRAN` + a per-id open-flag; no separate connection-pinning regist
 
 ## Why
 
-SQL Server is one of the three databases in the user's docker playground that dbui does not yet
+SQL Server is one of the three databases in the user's docker playground that purequery does not yet
 support (the others - Oracle, Redis - are deferred: Oracle needs native Instant Client C libs;
 Redis is a key-value store that breaks the one-grid relational model). It is a top-tier relational
 engine, `tiberius` is pure Rust (no native deps, works on Apple Silicon with `rustls`), and the
@@ -130,8 +130,8 @@ kind of new engine.
   uncommitted-statements modal work exactly as for Postgres/MySQL. `commit_transaction`/
   `rollback_transaction` run `COMMIT`/`ROLLBACK`; disconnect auto-rolls-back an open tx.
 - AC-020: A failed statement inside an open tx does not poison it - the next command still runs.
-  Each statement/mutation inside a pinned tx is wrapped in a `SAVE TRANSACTION dbui_stmt` +
-  `ROLLBACK TRANSACTION dbui_stmt` on error (the SQL Server analog of the Postgres savepoint).
+  Each statement/mutation inside a pinned tx is wrapped in a `SAVE TRANSACTION purequery_stmt` +
+  `ROLLBACK TRANSACTION purequery_stmt` on error (the SQL Server analog of the Postgres savepoint).
   **NOTE (verified empirically):** SQL Server with the default `XACT_ABORT OFF` does NOT abort the
   whole tx on an ordinary statement error (unlike Postgres; like SQLite), so the tx stays usable
   even without the savepoint - the savepoint is DEFENSIVE (for `XACT_ABORT ON` / batch-aborting
@@ -189,7 +189,7 @@ kind of new engine.
 - TC-011 (AC-018, BE): the backup estimate query is a fast catalog sum (not `COUNT(*)`); over the
   limit the FE blocks with a sticky error toast before the dialog. Maps to: AC-018.
 - TC-012 (AC-019/020, BE): `begin`/`commit`/`rollback` issue the right T-SQL; a statement error
-  inside an open tx rolls back to `dbui_stmt` and leaves the tx usable; `transaction_state` tracks
+  inside an open tx rolls back to `purequery_stmt` and leaves the tx usable; `transaction_state` tracks
   the open flag; disconnect rolls back an open tx. Maps to: AC-019, AC-020.
 - TC-013 (AC-022, BE): the dispatcher routes a held-mssql id to the mssql path and any other id to
   the SQL/Mongo path; a not-connected id returns the existing not-connected error. Maps to: AC-022.
@@ -270,7 +270,7 @@ kind of new engine.
   in every generated statement; a `]` in an identifier is doubled (`]]`).
 - E-4: A statement error inside a manual-commit tx -> the tx stays usable. SQL Server with default
   `XACT_ABORT OFF` does not abort the tx on an ordinary statement error (verified empirically -
-  like SQLite, unlike Postgres), so `SAVE TRANSACTION`/`ROLLBACK TRANSACTION dbui_stmt` is a
+  like SQLite, unlike Postgres), so `SAVE TRANSACTION`/`ROLLBACK TRANSACTION purequery_stmt` is a
   DEFENSIVE guard (for `XACT_ABORT ON` / batch-aborting errors + DBeaver parity), not required for
   the common case.
 - E-5: A value the driver returns as an unmapped/unknown ColumnData variant -> `cell_from_column`

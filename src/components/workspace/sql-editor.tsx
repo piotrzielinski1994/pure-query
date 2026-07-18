@@ -73,7 +73,7 @@ function variableNameOf(token: string): string {
 }
 
 // Marks every `{{name}}` placeholder DEFINED-vs-undefined: a name present in the current variable set
-// gets `cm-dbui-variable` (green), an unknown name `cm-dbui-variable-undefined` (red). Rebuilt when
+// gets `cm-purequery-variable` (green), an unknown name `cm-purequery-variable-undefined` (red). Rebuilt when
 // the doc changes; the variable set is read live off the closure (the plugin is reconfigured when the
 // set changes, see the extensions memo). Full editor only, never the single-line filter row.
 function makeVariableHighlighter(definedNames: Set<string>) {
@@ -82,8 +82,8 @@ function makeVariableHighlighter(definedNames: Set<string>) {
     decoration: (match) =>
       Decoration.mark({
         class: definedNames.has(variableNameOf(match[0]))
-          ? "cm-dbui-variable"
-          : "cm-dbui-variable-undefined",
+          ? "cm-purequery-variable"
+          : "cm-purequery-variable-undefined",
       }),
   });
   return ViewPlugin.fromClass(
@@ -102,7 +102,7 @@ function makeVariableHighlighter(definedNames: Set<string>) {
 
 // A hover tooltip over a `{{name}}` token, mirroring requi's var-token card: shows the resolved value
 // (or an "undefined variable" note) with Copy + Edit (jump to the Variables tab) actions. Vanilla DOM
-// (dbui has no radix HoverCard); themed via the app CSS tokens + design.md (no rounded corners).
+// (purequery has no radix HoverCard); themed via the app CSS tokens + design.md (no rounded corners).
 function makeVariableHover(
   values: Map<string, string>,
   onEdit: (name: string) => void,
@@ -137,18 +137,18 @@ export function variableTooltipDom(
   onEdit: (name: string) => void,
 ): HTMLElement {
   const wrap = document.createElement("div");
-  wrap.className = "cm-dbui-var-tooltip";
+  wrap.className = "cm-purequery-var-tooltip";
   const isDefined = values.has(name);
   if (!isDefined) {
     const note = document.createElement("span");
-    note.className = "cm-dbui-var-tooltip-note";
+    note.className = "cm-purequery-var-tooltip-note";
     note.textContent = `undefined variable "${name}"`;
     wrap.appendChild(note);
     return wrap;
   }
   const value = values.get(name) ?? "";
   const valueEl = document.createElement("span");
-  valueEl.className = "cm-dbui-var-tooltip-value";
+  valueEl.className = "cm-purequery-var-tooltip-value";
   valueEl.textContent = value;
   const copy = actionButton("Copy value", Copy, (event) => {
     event.preventDefault();
@@ -174,7 +174,7 @@ function actionButton(
   const button = document.createElement("button");
   button.type = "button";
   button.setAttribute("aria-label", label);
-  button.className = "cm-dbui-var-tooltip-action";
+  button.className = "cm-purequery-var-tooltip-action";
   button.addEventListener("mousedown", onMouseDown);
   createRoot(button).render(<Icon className="size-3.5" />);
   return button;
@@ -337,7 +337,7 @@ function mongoCommandSource(
 // in the SQL editor and the Mongo Query tab. The variable value shows as the completion `detail`
 // (the requi source-tag equivalent). Picking inserts the name + the closing `}}` unless one already
 // follows the cursor. Returns null with no variables (nothing to offer).
-// Marks a variable completion option with `cm-dbui-var-option` so the theme colors its label green +
+// Marks a variable completion option with `cm-purequery-var-option` so the theme colors its label green +
 // right-aligns the value detail (mirrors requi's token popup); non-variable options (keywords, tables,
 // columns) are left unclassed so they keep their normal chrome. Merged into basicSetup's single
 // `autocompletion()` (config combines via facets - one popup); `icons: false` merges as `a && b`, so
@@ -345,7 +345,7 @@ function mongoCommandSource(
 export const variableCompletionConfig = autocompletion({
   icons: false,
   optionClass: (completion: Completion) =>
-    completion.type === "variable" ? "cm-dbui-var-option" : "",
+    completion.type === "variable" ? "cm-purequery-var-option" : "",
 });
 
 function variableCompletionSource(variables: Variable[]): CompletionSource {
@@ -631,7 +631,7 @@ export function SqlEditor({
             ];
           })()),
       ...(singleLine ? [EditorState.transactionFilter.of(blockNewlines)] : []),
-      // In-app find (Cmd+F): dbui-styled CM search panel. Full editor only - the single-line filter
+      // In-app find (Cmd+F): purequery-styled CM search panel. Full editor only - the single-line filter
       // row has nothing to search through.
       ...(singleLine ? [] : [editorFind(findKey)]),
       Prec.highest(

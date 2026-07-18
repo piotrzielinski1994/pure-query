@@ -201,7 +201,7 @@ per-statement `SAVE TRANSACTION` in `run_query`/`apply_mutations`; disconnect au
 - Consumes: Task 1 `tx_open` on `MssqlConn`; Task 3/4 runners (wrap in savepoint when `tx_open`).
 
 - [ ] Failing tests: begin/commit/rollback T-SQL; statement error inside tx rolls back to
-      `dbui_stmt` + tx stays usable; `transaction_state` tracks flag; disconnect rolls back (TC-012).
+      `purequery_stmt` + tx stays usable; `transaction_state` tracks flag; disconnect rolls back (TC-012).
 - [ ] RED -> GREEN -> Commit (`feat(mssql): AC-019/020 manual-commit transactions`).
 
 ### Task 8: backup / export + guardrail (BE)

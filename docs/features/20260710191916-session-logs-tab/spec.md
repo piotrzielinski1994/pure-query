@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add a fourth tab, **Logs**, to the bottom panel (`Console` component) that shows every application log line emitted since launch - the same lines the app already writes to its per-launch file `~/Library/Logs/com.pzielinski.dbui/dbui-<ts>.log` (connect / disconnect / query / mutations, plus the frontend `log_message` bridge). Lines are parsed, syntax-colored by level, and filterable with a structured `field:value` search.
+Add a fourth tab, **Logs**, to the bottom panel (`Console` component) that shows every application log line emitted since launch - the same lines the app already writes to its per-launch file `~/Library/Logs/com.pzielinski.purequery/purequery-<ts>.log` (connect / disconnect / query / mutations, plus the frontend `log_message` bridge). Lines are parsed, syntax-colored by level, and filterable with a structured `field:value` search.
 
 **Why:** the file log is currently write-only - to read it a user must leave the app and open the file. A live in-app Logs tab surfaces the session's activity (what connected, which queries ran, failures, timings) without leaving the window, next to the existing History / Changes / Console tabs.
 
@@ -24,7 +24,7 @@ FE log_message bridge   ─┼─► tauri-plugin-log ─► TargetKind::Webview
 - **Backend change is exactly one line**: add `Target::new(TargetKind::Webview)` to the existing `.targets([...])` array in `logging::init` ([src-tauri/src/logging.rs](../../../src-tauri/src/logging.rs#L45-L50)). No new Tauri command, no dispatcher call-site edits - honors the CLAUDE.md "one call site per command" logging rule. The plugin (`tauri-plugin-log` 2.8.0, already a dependency) then forwards every `log::` record to the webview as a `log://log` event.
 - **Level filter stays `Info`** (unchanged): DEBUG/TRACE lines are already dropped at the file and will likewise not reach the webview. Accepted - Logs tab mirrors the file exactly.
 - **Frontend listener lives behind a port** (mirrors `WindowController` in [src/lib/window/window-controller.ts](../../../src/lib/window/window-controller.ts)): the real implementation subscribes to the plugin event (`@tauri-apps/plugin-log` `attachConsole`-style, or a raw `listen("log://log")`); a noop implementation is used in jsdom/browser, picked by `isTauri()`. Mount-once in the provider. This keeps the append pipeline unit-testable by injecting fake lines.
-- **Live-only** (deliberate): lines emitted before the FE listener mounts (the `dbui starting` line and any auto-connect-on-launch connects, which fire in Rust `setup()` before the webview is ready) are NOT shown. Documented gap - no file read-back command is added.
+- **Live-only** (deliberate): lines emitted before the FE listener mounts (the `purequery starting` line and any auto-connect-on-launch connects, which fire in Rust `setup()` before the webview is ready) are NOT shown. Documented gap - no file read-back command is added.
 
 ## Data model
 
@@ -110,7 +110,7 @@ Rendered per `<li>` in the Logs tab (visual rule also recorded in [docs/design.m
 - **Unparseable line** (a log line not matching the `[ts][LEVEL] msg` shape) → rendered raw as an info line, still searchable via bare terms / `message:`.
 - **Error tail with spaces** (`... failed (40ms): connection refused`) → stays in `message`, searchable via `message:`, not captured into `kv`.
 - **DEBUG/TRACE lines** → never emitted (level filter `Info`); Logs tab shows nothing for them - matches the file.
-- **Startup gap** → the `dbui starting` line and launch-time auto-connect lines fire before the webview listener mounts and are not shown (documented, accepted).
+- **Startup gap** → the `purequery starting` line and launch-time auto-connect lines fire before the webview listener mounts and are not shown (documented, accepted).
 - **High line volume** → own context prevents grid churn; list is a simple append (no virtualization in v1 - a session's line count is bounded and modest).
 - **Duplicate emit risk** → none: `TargetKind::Webview` is added alongside (not replacing) Stdout + LogDir, so the file still gets every line exactly once and the webview gets a copy.
 

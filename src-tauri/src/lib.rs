@@ -385,7 +385,7 @@ async fn estimate_backup_rows(config: serde_json::Value) -> Result<i64, String> 
 }
 
 // Exports a database to `path`: a native data-only INSERT dump (Postgres/MySQL), a file copy
-// (SQLite), or an Extended-JSON JSONL export (MongoDB) - dbui generates it over its own connection,
+// (SQLite), or an Extended-JSON JSONL export (MongoDB) - purequery generates it over its own connection,
 // no external tool. Takes the raw config like connect_database (the pool holds no config) and peeks
 // the `engine` tag to route Mongo vs SQL. No open connection is required - the backup opens its own.
 // Progress is the backend log stream (Logs tab); the returned summary drives the FE toast.

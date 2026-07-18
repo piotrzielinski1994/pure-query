@@ -2,12 +2,12 @@
 
 ## Overview
 
-dbui's keyboard shortcuts are hardcoded across four `window`-keydown listeners, two
+purequery's keyboard shortcuts are hardcoded across four `window`-keydown listeners, two
 CodeMirror keymaps, and the command palette's display-only `hint` strings. Nothing is
 user-rebindable, and the palette advertises three shortcuts (`Tab` next-tab,
 `Shift+Tab` prev-tab, `Ctrl+W` close-tab) that are **not actually bound to any key**.
 
-This feature ports `requi`'s shortcut-customization stack into dbui: a central action
+This feature ports `requi`'s shortcut-customization stack into purequery: a central action
 registry, an effective-binding resolver with conflict detection, persistence in a
 separate `keymap.json`, a recorder-based rebinding UI in Settings, and palette hints
 derived from the live bindings. It extends `requi`'s flat model with a **scope** tag so

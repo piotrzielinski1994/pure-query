@@ -2,9 +2,9 @@
 
 ## Overview
 
-Replace the native WKWebView find-in-page (opened by Cmd/Ctrl+F today, because dbui never ported vidui's reserved-key browser guard) with a focus-partitioned in-app find:
+Replace the native WKWebView find-in-page (opened by Cmd/Ctrl+F today, because purequery never ported vidui's reserved-key browser guard) with a focus-partitioned in-app find:
 
-- **Editor focused** (SQL editor / JS editor / JSON view) -> CodeMirror `@codemirror/search` with a dbui-styled find bar.
+- **Editor focused** (SQL editor / JS editor / JSON view) -> CodeMirror `@codemirror/search` with a purequery-styled find bar.
 - **Grid focused** (table card / SQL result) -> a non-destructive find bar over the shared `DataGrid`: highlight + next/prev, rows stay put.
 - Native find-in-page (and the other reserved browser combos) suppressed app-wide.
 

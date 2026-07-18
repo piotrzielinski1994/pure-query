@@ -8,11 +8,11 @@ Source: `.pzielinski/todos.md` F9 `[#24]` (Console = real logs), scoped to the f
 
 vidui writes rich per-launch file logs (`vidui-<ts>.log` via `tauri-plugin-log`), emitting a
 `log::info!`/`log::error!` line for every meaningful backend operation (`media.rs`, HLS server,
-etc.). dbui already has the SAME plumbing - `logging.rs` (per-launch `dbui-<ts>.log` in the OS
+etc.). purequery already has the SAME plumbing - `logging.rs` (per-launch `purequery-<ts>.log` in the OS
 app-log dir) + the `log_message` FE bridge (`file-log.ts`) - but the backend emits almost nothing
 beyond the startup line, so a session's log file is empty of the operations a user cares about.
 
-This feature brings dbui's backend file logging to parity with vidui: every connection-addressed
+This feature brings purequery's backend file logging to parity with vidui: every connection-addressed
 command (connect / disconnect / query / mutations) writes a structured `key=value` log line with
 outcome, row/table counts, and elapsed time. Logs land in the existing per-launch file (and
 stdout) - no new plugin, no new target.
@@ -23,7 +23,7 @@ already show query/edit events in-app.
 
 ## Why
 
-- The log file is the crash/debug artifact. vidui's is rich; dbui's is empty of operations, so a
+- The log file is the crash/debug artifact. vidui's is rich; purequery's is empty of operations, so a
   bug report ("connect hung", "a query failed") has nothing to correlate against.
 - The plumbing (`logging.rs`, per-launch file, `log::` facade) already exists - the only gap is
   call sites. Cheap, high-value parity.
@@ -110,7 +110,7 @@ before building an error line.
 ## UI States
 
 No UI. The only observable change is the content of the per-launch log file
-(`~/Library/Logs/com.pzielinski.dbui/dbui-<ts>.log`) and stdout.
+(`~/Library/Logs/com.pzielinski.purequery/purequery-<ts>.log`) and stdout.
 
 ## Dependencies
 

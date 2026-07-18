@@ -964,7 +964,7 @@ pub fn wrap_select_as_text(
         .collect::<Vec<_>>()
         .join(", ");
     let trimmed = user_sql.trim().trim_end_matches(';');
-    format!("SELECT {selected} FROM ({trimmed}) AS dbui_q LIMIT {limit}")
+    format!("SELECT {selected} FROM ({trimmed}) AS purequery_q LIMIT {limit}")
 }
 
 // Strips leading whitespace and SQL comments so the first real keyword can be read.
@@ -1020,23 +1020,23 @@ fn leading_keyword(sql: &str) -> String {
 // and cast to text - the one type Any always decodes.
 pub fn wrap_select_as_json(user_sql: &str, limit: u32) -> String {
     let trimmed = user_sql.trim().trim_end_matches(';');
-    format!("SELECT row_to_json(dbui_q)::text AS dbui_row FROM ({trimmed}) AS dbui_q LIMIT {limit}")
+    format!("SELECT row_to_json(purequery_q)::text AS purequery_row FROM ({trimmed}) AS purequery_q LIMIT {limit}")
 }
 
 // Column-name probe for an empty result. row_to_json only emits keys for rows that exist,
 // so a zero-row query yields no column info. A LEFT JOIN LATERAL against a single base row
 // always produces exactly one row; when the user query is empty the lateral side is all NULL.
-// We then re-select `dbui_q.*` into a derived table `dbui_cols` so the composite is a real
-// (non-null) row - row_to_json over the join-nullable `dbui_q` directly would be a NULL
+// We then re-select `purequery_q.*` into a derived table `purequery_cols` so the composite is a real
+// (non-null) row - row_to_json over the join-nullable `purequery_q` directly would be a NULL
 // whole-row composite and emit no keys. The derived row's columns are individually null but
 // defined, so row_to_json emits every key; parsing recovers the names, the null row is dropped.
 pub fn wrap_columns_probe(user_sql: &str) -> String {
     let trimmed = user_sql.trim().trim_end_matches(';');
     format!(
-        "SELECT row_to_json(dbui_cols)::text AS dbui_row FROM (\
-         SELECT dbui_q.* FROM (SELECT 1 AS dbui_one) AS dbui_base \
-         LEFT JOIN LATERAL ({trimmed}) AS dbui_q ON true LIMIT 1\
-         ) AS dbui_cols"
+        "SELECT row_to_json(purequery_cols)::text AS purequery_row FROM (\
+         SELECT purequery_q.* FROM (SELECT 1 AS purequery_one) AS purequery_base \
+         LEFT JOIN LATERAL ({trimmed}) AS purequery_q ON true LIMIT 1\
+         ) AS purequery_cols"
     )
 }
 
@@ -1167,21 +1167,21 @@ async fn run_one_in_savepoint(
     }
     use sqlx::Executor;
     (&mut *connection)
-        .execute("SAVEPOINT dbui_stmt")
+        .execute("SAVEPOINT purequery_stmt")
         .await
         .map_err(|error| error.to_string())?;
     match run_one_statement(engine, connection, statement, limit).await {
         Ok(outcome) => {
             // Best-effort release; a failed release does not invalidate the committed work.
             let _ = (&mut *connection)
-                .execute("RELEASE SAVEPOINT dbui_stmt")
+                .execute("RELEASE SAVEPOINT purequery_stmt")
                 .await;
             Ok(outcome)
         }
         Err(error) => {
             // Undo just this statement so the transaction stays alive for the next command.
             (&mut *connection)
-                .execute("ROLLBACK TO SAVEPOINT dbui_stmt")
+                .execute("ROLLBACK TO SAVEPOINT purequery_stmt")
                 .await
                 .map_err(|rollback_error| {
                     format!("{error}; savepoint rollback failed: {rollback_error}")
@@ -2401,19 +2401,19 @@ async fn execute_mutation_in_savepoint(
         return run_bound_mutation(connection, sql, binds).await;
     }
     (&mut *connection)
-        .execute("SAVEPOINT dbui_stmt")
+        .execute("SAVEPOINT purequery_stmt")
         .await
         .map_err(|error| error.to_string())?;
     match run_bound_mutation(connection, sql, binds).await {
         Ok(affected) => {
             let _ = (&mut *connection)
-                .execute("RELEASE SAVEPOINT dbui_stmt")
+                .execute("RELEASE SAVEPOINT purequery_stmt")
                 .await;
             Ok(affected)
         }
         Err(error) => {
             (&mut *connection)
-                .execute("ROLLBACK TO SAVEPOINT dbui_stmt")
+                .execute("ROLLBACK TO SAVEPOINT purequery_stmt")
                 .await
                 .map_err(|rollback_error| {
                     format!("{error}; savepoint rollback failed: {rollback_error}")
@@ -3222,7 +3222,7 @@ mod tests {
         );
         assert_eq!(
             sql,
-            "SELECT \"id\"::text, \"price\"::text FROM (SELECT id, price FROM product) AS dbui_q LIMIT 200"
+            "SELECT \"id\"::text, \"price\"::text FROM (SELECT id, price FROM product) AS purequery_q LIMIT 200"
         );
     }
 
@@ -3237,7 +3237,7 @@ mod tests {
         );
         assert_eq!(
             sql,
-            "SELECT CAST(`id` AS CHAR) FROM (SELECT id FROM product) AS dbui_q LIMIT 50"
+            "SELECT CAST(`id` AS CHAR) FROM (SELECT id FROM product) AS purequery_q LIMIT 50"
         );
     }
 
@@ -3250,7 +3250,7 @@ mod tests {
             &["id".to_string()],
             200,
         );
-        assert!(sql.contains("(SELECT id FROM product) AS dbui_q"));
+        assert!(sql.contains("(SELECT id FROM product) AS purequery_q"));
         assert!(!sql.contains(";)"));
     }
 
@@ -3261,7 +3261,7 @@ mod tests {
         let sql = wrap_select_as_json("SELECT * FROM product", 200);
         assert_eq!(
             sql,
-            "SELECT row_to_json(dbui_q)::text AS dbui_row FROM (SELECT * FROM product) AS dbui_q LIMIT 200"
+            "SELECT row_to_json(purequery_q)::text AS purequery_row FROM (SELECT * FROM product) AS purequery_q LIMIT 200"
         );
     }
 
@@ -3269,7 +3269,7 @@ mod tests {
     #[test]
     fn should_strip_a_trailing_semicolon_when_wrapping_as_json() {
         let sql = wrap_select_as_json("SELECT * FROM product;", 50);
-        assert!(sql.contains("(SELECT * FROM product) AS dbui_q"));
+        assert!(sql.contains("(SELECT * FROM product) AS purequery_q"));
         assert!(!sql.contains(";)"));
     }
 
@@ -3278,17 +3278,17 @@ mod tests {
     #[test]
     fn should_build_a_lateral_column_probe_for_an_empty_result() {
         let sql = wrap_columns_probe("SELECT * FROM email");
-        assert!(sql.contains("LEFT JOIN LATERAL (SELECT * FROM email) AS dbui_q ON true"));
-        // re-selects dbui_q.* into a derived table so the composite is non-null
-        assert!(sql.contains("SELECT dbui_q.* FROM"));
-        assert!(sql.contains("row_to_json(dbui_cols)"));
+        assert!(sql.contains("LEFT JOIN LATERAL (SELECT * FROM email) AS purequery_q ON true"));
+        // re-selects purequery_q.* into a derived table so the composite is non-null
+        assert!(sql.contains("SELECT purequery_q.* FROM"));
+        assert!(sql.contains("row_to_json(purequery_cols)"));
     }
 
     // behavior (the probe strips a trailing semicolon so the lateral subquery is valid)
     #[test]
     fn should_strip_a_trailing_semicolon_in_the_column_probe() {
         let sql = wrap_columns_probe("SELECT * FROM email;");
-        assert!(sql.contains("(SELECT * FROM email) AS dbui_q"));
+        assert!(sql.contains("(SELECT * FROM email) AS purequery_q"));
         assert!(!sql.contains(";)"));
     }
 
@@ -3599,7 +3599,7 @@ mod tests {
         );
         assert_eq!(
             sql,
-            "SELECT CAST(\"id\" AS TEXT), CAST(\"price\" AS TEXT) FROM (SELECT id, price FROM product) AS dbui_q LIMIT 200"
+            "SELECT CAST(\"id\" AS TEXT), CAST(\"price\" AS TEXT) FROM (SELECT id, price FROM product) AS purequery_q LIMIT 200"
         );
     }
 
@@ -4611,7 +4611,7 @@ mod tx_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = format!("/tmp/dbui-tx-{tag}-{nanos}.db");
+        let path = format!("/tmp/purequery-tx-{tag}-{nanos}.db");
         std::fs::write(&path, b"").expect("create empty sqlite file");
         path
     }
@@ -4928,7 +4928,7 @@ mod tx_tests {
     }
 
     // Live cross-connection isolation (true MVCC) against the docker test-stack Postgres (host port
-    // 55432, dbui/dbui, db dbui_test). Ignored by default like the mongo smoke; run with:
+    // 55432, purequery/purequery, db purequery_test). Ignored by default like the mongo smoke; run with:
     //   cargo test --manifest-path src-tauri/Cargo.toml live_pg_manual_commit -- --ignored --nocapture
     #[tokio::test]
     #[ignore]
@@ -4937,9 +4937,9 @@ mod tx_tests {
         let pg = || ConnectionConfig::Postgres {
             host: "localhost".to_string(),
             port: 55432,
-            database: "dbui_test".to_string(),
-            user: "dbui".to_string(),
-            password: "dbui".to_string(),
+            database: "purequery_test".to_string(),
+            user: "purequery".to_string(),
+            password: "purequery".to_string(),
         };
         let a = "live-tx-a";
         let b = "live-tx-b";
@@ -4999,9 +4999,9 @@ mod tx_tests {
         let pg = ConnectionConfig::Postgres {
             host: "localhost".to_string(),
             port: 55432,
-            database: "dbui_test".to_string(),
-            user: "dbui".to_string(),
-            password: "dbui".to_string(),
+            database: "purequery_test".to_string(),
+            user: "purequery".to_string(),
+            password: "purequery".to_string(),
         };
         let id = "live-tx-sp";
         connect_database(id.to_string(), pg).await.expect("connect");

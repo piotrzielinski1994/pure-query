@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "DbUI",
+  "productName": "purequery",
   "version": "0.1.0",
-  "identifier": "com.pzielinski.dbui",
+  "identifier": "com.pzielinski.purequery",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1431",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "DbUI",
+        "title": "purequery",
         "width": 1000,
         "height": 700,
         "backgroundColor": "#000000"

@@ -21,7 +21,7 @@ Reuse from `requi` (`~/projects/private/requi/src-tauri/src/lib.rs`): the cancel
 (`static LazyLock<Mutex<HashMap<requestId, CancellationToken>>>`), the `CancelGuard` Drop that
 removes the token on every exit, the `CANCEL_SENTINEL` string, and the `tokio::select! { biased;
 _ = token.cancelled() => sentinel, result = work => result }` shape. requi has NO held-pool
-precedent (it builds a reqwest client per send), so the registry is dbui-new.
+precedent (it builds a reqwest client per send), so the registry is purequery-new.
 
 ONE-grid invariant unchanged. The SQL result still renders through `DataGrid` (read-only).
 

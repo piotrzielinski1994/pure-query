@@ -12,7 +12,7 @@ export type DeserializeResult =
   | { ok: true; tree: TreeNode[]; skipped: string[] }
   | { ok: false; error: string };
 
-export const MANIFEST = "dbui.workspace.json";
+export const MANIFEST = "purequery.workspace.json";
 
 type Ordered = { node: TreeNode; order?: number };
 

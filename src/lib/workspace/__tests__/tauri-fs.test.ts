@@ -99,12 +99,12 @@ describe("createTauriWorkspaceFs writeWorkspace", () => {
     const fs = createTauriWorkspaceFs();
 
     const result = await fs.writeWorkspace(ROOT, {
-      "dbui.workspace.json": "{}",
+      "purequery.workspace.json": "{}",
       "dir1/folder.json": "{}",
     });
 
     expect(result.ok).toBe(true);
-    expect(fileContents.get(`${ROOT}/dbui.workspace.json`)).toBe("{}");
+    expect(fileContents.get(`${ROOT}/purequery.workspace.json`)).toBe("{}");
     expect(fileContents.get(`${ROOT}/dir1/folder.json`)).toBe("{}");
   });
 
@@ -113,14 +113,14 @@ describe("createTauriWorkspaceFs writeWorkspace", () => {
     const fs = createTauriWorkspaceFs();
 
     await fs.writeWorkspace(ROOT, {
-      "dbui.workspace.json": "{}",
+      "purequery.workspace.json": "{}",
       "gone.db.json": '{"id":"g"}',
       "stay.db.json": '{"id":"s"}',
     });
     expect(fileContents.get(`${ROOT}/gone.db.json`)).toBe('{"id":"g"}');
 
     await fs.writeWorkspace(ROOT, {
-      "dbui.workspace.json": "{}",
+      "purequery.workspace.json": "{}",
       "stay.db.json": '{"id":"s"}',
     });
 
@@ -134,7 +134,7 @@ describe("createTauriWorkspaceFs readWorkspace", () => {
   it("should collect managed files recursively and skip unmanaged files", async () => {
     dirs.add(ROOT);
     dirs.add(`${ROOT}/dir1`);
-    fileContents.set(`${ROOT}/dbui.workspace.json`, '{"schemaVersion":1}');
+    fileContents.set(`${ROOT}/purequery.workspace.json`, '{"schemaVersion":1}');
     fileContents.set(`${ROOT}/root.db.json`, '{"id":"r"}');
     fileContents.set(`${ROOT}/dir1/folder.json`, '{"id":"f"}');
     fileContents.set(`${ROOT}/dir1/nested.db.json`, '{"id":"n"}');
@@ -148,7 +148,7 @@ describe("createTauriWorkspaceFs readWorkspace", () => {
       throw new Error(read.error);
     }
     expect(read.files).toEqual({
-      "dbui.workspace.json": '{"schemaVersion":1}',
+      "purequery.workspace.json": '{"schemaVersion":1}',
       "root.db.json": '{"id":"r"}',
       "dir1/folder.json": '{"id":"f"}',
       "dir1/nested.db.json": '{"id":"n"}',

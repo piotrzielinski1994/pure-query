@@ -103,7 +103,7 @@ or recurring domain shape. Recorded in Decision Log.
 
 - Dispatch does NOT use `useHotkeys` with a `target` ref. jsdom resolves the test
   platform to "linux" (so TanStack maps `Mod`->Control only), while every existing
-  dbui shortcut test fires `metaKey` OR `ctrlKey` interchangeably. A hand-rolled
+  purequery shortcut test fires `metaKey` OR `ctrlKey` interchangeably. A hand-rolled
   `matchesHotkey` (where `Mod` = meta||ctrl) on each component's existing
   window-keydown listener keeps all prior tests green and is the smaller change. The
   lib is still used for the recorder, normalize/validate, and `formatForDisplay`.

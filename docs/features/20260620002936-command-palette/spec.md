@@ -6,7 +6,7 @@
 
 > Re-introduces a command palette (removed during bootstrap->layout, see layout spec 0.3.0).
 > Modeled on `requi`'s palette: `cmdk` + a radix dialog modal with fuzzy search. Unlike `requi`,
-> there is NO rebindable-shortcut registry and NO settings persistence - dbui has no settings
+> there is NO rebindable-shortcut registry and NO settings persistence - purequery has no settings
 > layer. The palette self-manages a single fixed trigger (Cmd/Ctrl+K) and exposes
 > **tab-management commands only**.
 

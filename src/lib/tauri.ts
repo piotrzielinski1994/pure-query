@@ -214,7 +214,7 @@ export function estimateBackupRows(config: ConnectionConfig): Promise<number> {
 }
 
 // Exports a database to `path` - a native data-only INSERT dump (Postgres/MySQL), a file copy
-// (SQLite), or an Extended-JSON JSONL export (MongoDB); dbui generates it over its own connection,
+// (SQLite), or an Extended-JSON JSONL export (MongoDB); purequery generates it over its own connection,
 // no external tool. Sends the raw connection config like connectDatabase (the pool holds no config);
 // no open connection is required. Progress surfaces in the Logs tab (backend log stream).
 export function backupDatabase(

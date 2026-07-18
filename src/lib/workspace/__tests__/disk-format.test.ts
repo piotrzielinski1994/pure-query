@@ -87,7 +87,7 @@ const expectOk = (result: ReturnType<typeof deserialize>) => {
 
 describe("disk-format serialize", () => {
   // TC-002 - behavior: a manifest with schemaVersion 1 + the workspace name
-  it("should emit a dbui.workspace.json manifest with schemaVersion 1 and the name", () => {
+  it("should emit a purequery.workspace.json manifest with schemaVersion 1 and the name", () => {
     const map = serialize([], "My Workspace");
 
     const raw = map[MANIFEST];

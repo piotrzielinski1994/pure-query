@@ -8,7 +8,7 @@
 > below) adds the `+` button wiring and a sidebar row **context menu** to delete a database/folder
 > and toggle a connection - the management half of the same workspace-tree feature.
 
-> A fresh DbUI install starts with an empty sidebar tree and no way to populate it: the tree
+> A fresh purequery install starts with an empty sidebar tree and no way to populate it: the tree
 > is built only from persisted `workspace.json` / mock data, `setTree` is private to the
 > workspace context, and nothing (command, button, shortcut) creates a database or folder.
 > This feature unblocks the empty state by exposing **New database** and **New folder** as
@@ -48,7 +48,7 @@ What this feature does **not** deliver (YAGNI):
 
 ### User Story
 
-As a developer opening a fresh DbUI, I want to create a database connection and folders from the
+As a developer opening a fresh purequery, I want to create a database connection and folders from the
 keyboard, so I can start working without a pre-seeded `workspace.json`.
 
 ### Approved layout (ASCII)

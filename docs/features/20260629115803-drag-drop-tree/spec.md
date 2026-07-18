@@ -16,7 +16,7 @@ The move updates the in-memory `tree` immutably and auto-persists through the ex
 are stripped on dehydrate). No new persistence wiring.
 
 This mirrors the proven implementation in the `requi` repo (`@dnd-kit/core`, `tree-locate.ts`,
-`move.ts`, `tree-dnd.tsx`), adapted to dbui's node kinds (folder / database / table) and its
+`move.ts`, `tree-dnd.tsx`), adapted to purequery's node kinds (folder / database / table) and its
 React-context store.
 
 ## Why
@@ -97,7 +97,7 @@ Idle (today):
 
 ```
 +-----------------------------+
-| DbUI                        |
+| purequery                        |
 +-----------------------------+
 | v prod                      |
 |   v team                    |
@@ -112,7 +112,7 @@ Dragging `scratch_db`, hovering middle of `staging` (drop = inside):
 
 ```
 +-----------------------------+
-| DbUI                        |
+| purequery                        |
 +-----------------------------+
 | v prod                      |
 |   v team                    |
@@ -128,7 +128,7 @@ Dragging `scratch_db`, hovering top edge of `prod` (drop = before):
 
 ```
 +-----------------------------+
-| DbUI                        |
+| purequery                        |
 +-----------------------------+
 | --------------------------- |   <- 1px primary line (drop before prod)
 | v prod                      |
@@ -144,7 +144,7 @@ Dragging into an empty (expanded) folder:
 
 ```
 +-----------------------------+
-| DbUI                        |
+| purequery                        |
 +-----------------------------+
 | v reports                   |
 |   #Drop here################|   <- empty-drop zone, ringed when hovered

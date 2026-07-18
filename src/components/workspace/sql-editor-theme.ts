@@ -40,17 +40,17 @@ export function makeSqlChrome(colors: EditorColors, isDark: boolean) {
       // `{{name}}` query-variable placeholders (F18): a DEFINED variable is emerald (the SAME green as
       // the completion popup's variable rows - requi's `variable`-kind color), an UNDEFINED one red -
       // both weighted so they stand out as a substitution slot.
-      ".cm-dbui-variable": {
+      ".cm-purequery-variable": {
         color: isDark ? "var(--color-emerald-400)" : "var(--color-emerald-500)",
         fontWeight: "600",
       },
-      ".cm-dbui-variable-undefined": {
+      ".cm-purequery-variable-undefined": {
         color: isDark ? "var(--color-red-400)" : "var(--color-red-500)",
         fontWeight: "600",
       },
-      // The `{{name}}` hover popup (vanilla DOM, dbui has no radix HoverCard): a flush row of the
+      // The `{{name}}` hover popup (vanilla DOM, purequery has no radix HoverCard): a flush row of the
       // resolved value + Copy/Edit actions, themed via the app tokens, no rounded corners (design.md).
-      ".cm-dbui-var-tooltip": {
+      ".cm-purequery-var-tooltip": {
         display: "flex",
         alignItems: "stretch",
         maxWidth: "24rem",
@@ -60,7 +60,7 @@ export function makeSqlChrome(colors: EditorColors, isDark: boolean) {
         fontFamily: "var(--font-mono, ui-monospace, monospace)",
         fontSize: "0.75rem",
       },
-      ".cm-dbui-var-tooltip-value": {
+      ".cm-purequery-var-tooltip-value": {
         display: "flex",
         alignItems: "center",
         padding: "0 0.625rem",
@@ -68,23 +68,23 @@ export function makeSqlChrome(colors: EditorColors, isDark: boolean) {
         textOverflow: "ellipsis",
         whiteSpace: "nowrap",
       },
-      ".cm-dbui-var-tooltip-note": {
+      ".cm-purequery-var-tooltip-note": {
         padding: "0.5rem 0.75rem",
         color: "var(--muted-foreground)",
       },
-      ".cm-dbui-var-tooltip-action": {
+      ".cm-purequery-var-tooltip-action": {
         flexShrink: "0",
         padding: "0.375rem 0.625rem",
         borderLeft: "1px solid var(--border)",
         color: "var(--muted-foreground)",
         cursor: "pointer",
       },
-      ".cm-dbui-var-tooltip-action:hover": {
+      ".cm-purequery-var-tooltip-action:hover": {
         backgroundColor: "var(--accent)",
         color: "var(--accent-foreground)",
       },
       // The CM hover-tooltip shell wrapping our DOM: strip its default chrome so our themed box is
-      // flush (our inner `.cm-dbui-var-tooltip` carries the border/bg).
+      // flush (our inner `.cm-purequery-var-tooltip` carries the border/bg).
       ".cm-tooltip.cm-tooltip-hover": {
         backgroundColor: "transparent",
         border: "none",
@@ -106,7 +106,7 @@ export function makeSqlChrome(colors: EditorColors, isDark: boolean) {
       },
       // Each completion row is a flex line: name left, detail (value) pushed right via the detail's
       // margin-left:auto. Without `display:flex` on the `li`, that auto-margin is a no-op and the
-      // detail sits inline right after the label (the bug: dbui rows weren't flex). Mirrors requi.
+      // detail sits inline right after the label (the bug: purequery rows weren't flex). Mirrors requi.
       ".cm-tooltip-autocomplete > ul > li": {
         display: "flex",
         alignItems: "center",
@@ -141,11 +141,11 @@ export function makeSqlChrome(colors: EditorColors, isDark: boolean) {
         marginLeft: "auto",
         fontSize: "10px",
       },
-      // A `{{name}}` variable completion row (option class `cm-dbui-var-option`, F18): the label is
+      // A `{{name}}` variable completion row (option class `cm-purequery-var-option`, F18): the label is
       // green (emerald, matching requi's `variable`-kind token color), same as the defined-variable
       // highlight family. The row flex + detail right-align come from the shared `li`/detail rules
       // above; the icon column is off for these rows via `autocompletion({icons:false})`.
-      ".cm-dbui-var-option .cm-completionLabel": {
+      ".cm-purequery-var-option .cm-completionLabel": {
         color: isDark ? "var(--color-emerald-400)" : "var(--color-emerald-500)",
       },
     },

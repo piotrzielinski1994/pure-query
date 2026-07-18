@@ -50,13 +50,13 @@
 
 ## 1. Overview
 
-DbUI held all UI and connection state in memory (`WorkspaceProvider`); nothing survived a
+purequery held all UI and connection state in memory (`WorkspaceProvider`); nothing survived a
 restart, and the sidebar was hardcoded `mockTree`. This feature adds a **JSON-file
 persistence layer modeled on the `requi` repo**, which persists frontend state to
 OS-config-dir JSON files via `@tauri-apps/plugin-store` (`LazyStore`), validated through
 a `merge*()` gatekeeper, behind a `*Store` interface (Tauri + in-memory) and a React
 context. requi keeps **two concerns in two files**: UI state and the workspace structure.
-DbUI mirrors that:
+purequery mirrors that:
 
 - **`settings.json`** (`src/lib/settings/`) - UI/layout state: sidebar/console visibility,
   split orientation, panel layouts, expanded tree nodes, open tabs + active tab.
@@ -80,7 +80,7 @@ What this does **not** deliver (out of scope, not requested):
 - No encryption / OS keychain for passwords (plaintext JSON, matching requi).
 - No new settings UI; no Add/Remove/Rename-database UI (the tree is hand-authored in
   `workspace.json` or grown via the connect-edit path). Add/Remove UI is the next slice.
-- No directory-scan workspace (requi scans `folder.json`/`.req.json`); dbui uses a single
+- No directory-scan workspace (requi scans `folder.json`/`.req.json`); purequery uses a single
   `workspace.json` manifest holding the whole tree.
 - No persistence of runtime/derived fields (tables, views, sql editor text, script, query
   result), connection status, query history, or pending edits.
@@ -88,7 +88,7 @@ What this does **not** deliver (out of scope, not requested):
 
 ### User Story
 
-As a developer using DbUI, I want my panel layout, open tabs, and my sidebar's databases
+As a developer using purequery, I want my panel layout, open tabs, and my sidebar's databases
 (folders + connection details) to survive a restart, so I resume where I left off without
 re-typing credentials or re-toggling panels - and the sidebar reflects MY databases, not
 fixed mock data.
@@ -209,7 +209,7 @@ empty defaults on hydrate, stripped on dehydrate. `ConnectionConfig` reused from
 `mock-data.ts`.
 
 Storage (both via `LazyStore`, OS app-config dir, e.g.
-`~/Library/Application Support/com.pzielinski.dbui/`):
+`~/Library/Application Support/com.pzielinski.purequery/`):
 - `settings.json` key `settings` <- the `Settings` object.
 - `workspace.json` key `workspace` <- the `PersistedWorkspace`.
 

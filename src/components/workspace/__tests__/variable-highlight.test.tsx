@@ -4,8 +4,8 @@ import { EditorView } from "@codemirror/view";
 import { CompletionContext } from "@codemirror/autocomplete";
 
 // F18 CodeMirror `{{name}}` decoration (AC-011 / TC-017 + variable-aware color). A `{{name}}` DEFINED
-// in the editor's variable set is decorated `.cm-dbui-variable` (green); an UNDEFINED one
-// `.cm-dbui-variable-undefined` (red). The single-line filter editor NEVER decorates. The decoration
+// in the editor's variable set is decorated `.cm-purequery-variable` (green); an UNDEFINED one
+// `.cm-purequery-variable-undefined` (red). The single-line filter editor NEVER decorates. The decoration
 // DOM populates in jsdom even though CM emits harmless getClientRects/measure errors (known baseline),
 // so `container.querySelector` is the reliable assertion.
 import { SqlEditor } from "@/components/workspace/sql-editor";
@@ -37,7 +37,7 @@ async function completionsAt(container: HTMLElement) {
 }
 
 describe("SqlEditor {{name}} decoration (AC-011, TC-017)", () => {
-  // AC-011 - behavior: a DEFINED {{userId}} decorates as .cm-dbui-variable (green).
+  // AC-011 - behavior: a DEFINED {{userId}} decorates as .cm-purequery-variable (green).
   it("should decorate a defined {{name}} token green in the full editor", () => {
     const { container } = render(
       <SqlEditor
@@ -49,13 +49,13 @@ describe("SqlEditor {{name}} decoration (AC-011, TC-017)", () => {
       />,
     );
 
-    expect(container.querySelector(".cm-dbui-variable")).not.toBeNull();
+    expect(container.querySelector(".cm-purequery-variable")).not.toBeNull();
     expect(
-      container.querySelector(".cm-dbui-variable-undefined"),
+      container.querySelector(".cm-purequery-variable-undefined"),
     ).toBeNull();
   });
 
-  // AC-011 - behavior: an UNDEFINED {{missing}} decorates as .cm-dbui-variable-undefined (red).
+  // AC-011 - behavior: an UNDEFINED {{missing}} decorates as .cm-purequery-variable-undefined (red).
   it("should decorate an undefined {{name}} token red in the full editor", () => {
     const { container } = render(
       <SqlEditor
@@ -68,9 +68,9 @@ describe("SqlEditor {{name}} decoration (AC-011, TC-017)", () => {
     );
 
     expect(
-      container.querySelector(".cm-dbui-variable-undefined"),
+      container.querySelector(".cm-purequery-variable-undefined"),
     ).not.toBeNull();
-    expect(container.querySelector(".cm-dbui-variable")).toBeNull();
+    expect(container.querySelector(".cm-purequery-variable")).toBeNull();
   });
 
   // AC-011 - behavior: with NO variables set, every {{name}} is undefined (red), never green.
@@ -85,9 +85,9 @@ describe("SqlEditor {{name}} decoration (AC-011, TC-017)", () => {
     );
 
     expect(
-      container.querySelector(".cm-dbui-variable-undefined"),
+      container.querySelector(".cm-purequery-variable-undefined"),
     ).not.toBeNull();
-    expect(container.querySelector(".cm-dbui-variable")).toBeNull();
+    expect(container.querySelector(".cm-purequery-variable")).toBeNull();
   });
 
   // AC-011, TC-017 - behavior: the single-line filter editor does NOT decorate {{name}} tokens.
@@ -103,9 +103,9 @@ describe("SqlEditor {{name}} decoration (AC-011, TC-017)", () => {
       />,
     );
 
-    expect(container.querySelector(".cm-dbui-variable")).toBeNull();
+    expect(container.querySelector(".cm-purequery-variable")).toBeNull();
     expect(
-      container.querySelector(".cm-dbui-variable-undefined"),
+      container.querySelector(".cm-purequery-variable-undefined"),
     ).toBeNull();
   });
 
@@ -122,9 +122,9 @@ describe("SqlEditor {{name}} decoration (AC-011, TC-017)", () => {
       />,
     );
 
-    expect(container.querySelector(".cm-dbui-variable")).toBeNull();
+    expect(container.querySelector(".cm-purequery-variable")).toBeNull();
     expect(
-      container.querySelector(".cm-dbui-variable-undefined"),
+      container.querySelector(".cm-purequery-variable-undefined"),
     ).toBeNull();
   });
 });

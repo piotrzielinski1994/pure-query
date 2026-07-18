@@ -45,7 +45,7 @@
   Any driver *describe* the result, which can't map native PG types (`timestamp`, `uuid`, ...)
   -> errored before the text-cast wrap. Reworked `run_query` for Postgres to never prepare
   arbitrary SQL: classify by leading keyword (`is_row_returning`), execute non-row statements,
-  and wrap row-returning ones as `SELECT row_to_json(dbui_q)::text FROM (<sql>) AS dbui_q
+  and wrap row-returning ones as `SELECT row_to_json(purequery_q)::text FROM (<sql>) AS purequery_q
   LIMIT N` (parsed back to columns+cells in Rust). MySQL keeps the `prepare().columns()` path.
   New Rust fns: `is_row_returning`, `wrap_select_as_json`, `parse_json_rows`,
   `run_query_postgres`/`run_query_mysql`.
@@ -55,7 +55,7 @@
   statements (SELECT/WITH) show a grid; non-row statements (UPDATE/INSERT/DDL) report
   rows-affected + a message. Run is disabled with a "Connect first" hint until the database is
   connected (Settings tab). Backend classifies via `prepare().columns()` (empty -> execute,
-  else wrap as `SELECT <col>::text FROM (<user sql>) dbui_q LIMIT N` to dodge the Any-driver
+  else wrap as `SELECT <col>::text FROM (<user sql>) purequery_q LIMIT N` to dodge the Any-driver
   decode trap for arbitrary result types). New: Rust `run_query`/`wrap_select_as_text`,
   `execute_sql` command, frontend `executeSql`. Saved-script tabs dropped (were inert mock).
 - **0.5.0** - Filter box reinterpreted as a **raw SQL WHERE** expression (DBeaver-style):
@@ -148,7 +148,7 @@ What this does **not** deliver (out of scope, not requested):
 
 ### User Story
 
-As a developer using DbUI, I want to enter my Postgres/MySQL connection details and connect,
+As a developer using purequery, I want to enter my Postgres/MySQL connection details and connect,
 so that the sidebar shows my database's real tables instead of mock data.
 
 ### Approved layout (ASCII)

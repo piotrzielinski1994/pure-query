@@ -6,20 +6,20 @@
 
 ## 1. Overview
 
-`dbui` and `requi` are sibling Tauri apps that share the same shortcut/registry,
+`purequery` and `requi` are sibling Tauri apps that share the same shortcut/registry,
 sidebar-tree, command-palette and settings infrastructure. Three keyboard/navigation
-features shipped in `requi` have **no `dbui` equivalent** yet:
+features shipped in `requi` have **no `purequery` equivalent** yet:
 
 1. **Table quick-open** (`requi` `20260714145715-request-quick-open`) - a VSCode
-   `Cmd+P`-style fuzzy-jump overlay. `dbui` has no quick-open; its tree grows deep
+   `Cmd+P`-style fuzzy-jump overlay. `purequery` has no quick-open; its tree grows deep
    (databases → schemas → many tables), so reaching a table means expanding by hand.
 2. **Full keyboard tree navigation** (`requi` `20260711223640-keyboard-tree-navigation`)
-   - `dbui`'s README bills it "keyboard-driven", but the sidebar tree's only
+   - `purequery`'s README bills it "keyboard-driven", but the sidebar tree's only
    `window` keydown handler is Delete/Backspace bulk-delete
    ([sidebar-tree.tsx:115-135](../../src/components/workspace/sidebar-tree.tsx)); there
    is no arrow-key movement, Enter/Space open, expand/collapse, or roving `tabIndex`.
 3. **Keymap multi-binding + removal + panel focus-on-toggle** (`requi`
-   `20260714113951-keymap-multibind-and-panel-focus`) - `dbui`'s `ShortcutOverrides`
+   `20260714113951-keymap-multibind-and-panel-focus`) - `purequery`'s `ShortcutOverrides`
    is one hotkey **string** per action ([resolve.ts:31-46](../../src/lib/shortcuts/resolve.ts));
    an action cannot carry two bindings, a binding cannot be removed (only reset), and
    toggling a panel open does not move focus into it.
@@ -28,10 +28,10 @@ All three ship on **one branch** (project rule: single chat session = single bra
 Each is an independent acceptance-criteria group and is independently testable, so they
 can be built and merged in slice order A → B → C.
 
-### 1.1 Key `dbui` vs `requi` differences that shape this design
+### 1.1 Key `purequery` vs `requi` differences that shape this design
 
 - **Tree leaves are ephemeral live-catalog nodes.** `requi` requests are persisted tree
-  nodes always present. `dbui` `table` nodes exist **only** when their database is
+  nodes always present. `purequery` `table` nodes exist **only** when their database is
   connected and its tables have been introspected
   ([workspace-context.tsx `tablesFromRefs`](../../src/components/workspace/workspace-context.tsx)).
   → Quick-open lists tables **only for already-connected databases**; every database and
@@ -39,15 +39,15 @@ can be built and merged in slice order A → B → C.
 - **Only `folder` and `database` rows are draggable/movable**; `table` rows are leaves
   with no drag wiring (CLAUDE.md invariant). → keyboard reorder (Alt+Arrow) is a no-op on
   a table row, and `moveNode` continues to reject table/database parents.
-- **`dbui` tabs have no drag-reorder today** - the tab bar
+- **`purequery` tabs have no drag-reorder today** - the tab bar
   ([tab-bar.tsx](../../src/components/workspace/tab-bar.tsx)) registers **no** dnd-kit
   `DndContext`/sensors, unlike `requi`. → keyboard **tab reorder is out of scope** (there
   is no pointer baseline to match; `next-tab`/`prev-tab` shortcuts already exist). Only
   the tab **context menu** gets a keyboard opener.
 - **Shortcut recorder already exists** and is shared with `requi`'s vendored
   `@tanstack/react-hotkeys` ([shortcut-row.tsx](../../src/components/settings/shortcut-row.tsx)).
-  The macOS-Option recording fix from `requi` point 3 will be **verified against `dbui`'s
-  recorder during implementation**; it is included only if `dbui` reproduces the bug
+  The macOS-Option recording fix from `requi` point 3 will be **verified against `purequery`'s
+  recorder during implementation**; it is included only if `purequery` reproduces the bug
   (likely, since the lib is vendored the same way). If already fixed, this AC is dropped
   with a note - no speculative change.
 
@@ -82,7 +82,7 @@ Navigation per kind:
 ### A.2 Pure core - `src/lib/workspace/quick-open.ts`
 
 Mirrors `requi`'s `quick-open.ts` (subsequence fuzzy + field-weighted rank), adapted to
-`dbui` node kinds:
+`purequery` node kinds:
 
 ```ts
 export type QuickOpenEntry = {
@@ -250,10 +250,10 @@ while an override exists) clears the override to the single default.
 
 ### C.5 macOS Option-recording fix (conditional)
 
-Verify `dbui`'s recorder reproduces `requi`'s bug (recording `⌘⌥P` stores the default,
+Verify `purequery`'s recorder reproduces `requi`'s bug (recording `⌘⌥P` stores the default,
 because Option composes `event.key`). If reproduced, apply the same fix (recorder builds
 the combo from `event.code` for composed keys, matching what the matcher fires on). If
-already fixed in `dbui`, drop this AC with a note in the feature plan.
+already fixed in `purequery`, drop this AC with a note in the feature plan.
 
 ### C.6 Acceptance criteria (Slice C)
 

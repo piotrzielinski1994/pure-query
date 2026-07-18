@@ -778,14 +778,14 @@ async fn execute_mutation_in_savepoint(
         return run_bound_mutation(conn, sql, binds).await;
     }
     conn.client
-        .simple_query("SAVE TRANSACTION dbui_stmt")
+        .simple_query("SAVE TRANSACTION purequery_stmt")
         .await
         .map_err(|error| error.to_string())?;
     match run_bound_mutation(conn, sql, binds).await {
         Ok(affected) => Ok(affected),
         Err(error) => {
             conn.client
-                .simple_query("ROLLBACK TRANSACTION dbui_stmt")
+                .simple_query("ROLLBACK TRANSACTION purequery_stmt")
                 .await
                 .map_err(|rollback_error| {
                     format!("{error}; savepoint rollback failed: {rollback_error}")
@@ -1190,14 +1190,14 @@ async fn run_one_in_savepoint(
         return run_one_statement(conn, statement).await;
     }
     conn.client
-        .simple_query("SAVE TRANSACTION dbui_stmt")
+        .simple_query("SAVE TRANSACTION purequery_stmt")
         .await
         .map_err(|error| error.to_string())?;
     match run_one_statement(conn, statement).await {
         Ok(outcome) => Ok(outcome),
         Err(error) => {
             conn.client
-                .simple_query("ROLLBACK TRANSACTION dbui_stmt")
+                .simple_query("ROLLBACK TRANSACTION purequery_stmt")
                 .await
                 .map_err(|rollback_error| {
                     format!("{error}; savepoint rollback failed: {rollback_error}")
@@ -1587,9 +1587,9 @@ mod tests {
         let config = MssqlConfig {
             host: "localhost".to_string(),
             port: 14330,
-            database: "dbui_test".to_string(),
+            database: "purequery_test".to_string(),
             user: "sa".to_string(),
-            password: "DbUi_test!2026".to_string(),
+            password: "purequery_test!2026".to_string(),
         };
         let id = "live-mssql".to_string();
 

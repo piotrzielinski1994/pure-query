@@ -13,7 +13,7 @@ use sqlx::Row;
 use std::time::Duration;
 
 // A NATIVE, self-contained logical dump - no external CLI tool (pg_dump/mysqldump/mongodump).
-// dbui generates the dump itself over its own connection, so the user never has to install
+// purequery generates the dump itself over its own connection, so the user never has to install
 // anything. Per engine:
 //   - Postgres / MySQL -> a `.sql` file of `INSERT` statements (data-only; schema is assumed to
 //     already exist on restore, e.g. from a migration tool). DDL synthesis is deliberately NOT
@@ -21,7 +21,7 @@ use std::time::Duration;
 //     `CREATE TABLE`, which would produce a dump that fails to restore.
 //   - SQLite -> a byte copy of the database file (exact schema + data, no tool).
 //   - MongoDB -> a `.jsonl` file, one canonical Extended JSON document per line (round-trips every
-//     BSON type; restorable with `mongoimport` or dbui's own future restore).
+//     BSON type; restorable with `mongoimport` or purequery's own future restore).
 // Credentials never touch a shell: the SQL path uses sqlx binds, the Mongo path a percent-encoded
 // URI. There is no process spawn at all.
 //
@@ -194,7 +194,7 @@ pub fn sql_dump_header(engine: DbEngine, database: &str) -> String {
         DbEngine::Mysql => "mysql",
         DbEngine::Sqlite => "sqlite",
     };
-    format!("-- dbui backup ({engine_label}) database={database}\n-- data-only: INSERT statements; restore into an existing schema\n")
+    format!("-- purequery backup ({engine_label}) database={database}\n-- data-only: INSERT statements; restore into an existing schema\n")
 }
 
 // One canonical Extended JSON line for a Mongo document (round-trips every BSON type). Pure over an
@@ -413,7 +413,7 @@ async fn open_mongo_database(config: MongoConfig) -> Result<(Client, mongodb::Da
 // Opens a Mongo client from the config (fail-fast) and writes every collection's documents as
 // canonical Extended JSON, one document per line (JSONL). Each line is prefixed by nothing - the
 // collection boundary is a `// collection: <name>` comment line, which mongoimport ignores per
-// collection because the file is imported per-collection anyway; dbui's future restore reads them.
+// collection because the file is imported per-collection anyway; purequery's future restore reads them.
 async fn run_mongo_backup(config: MongoConfig, path: &str) -> Result<BackupSummary, String> {
     let started = std::time::Instant::now();
     let (_client, database) = open_mongo_database(config).await?;
@@ -456,7 +456,7 @@ async fn run_mssql_backup(config: MssqlConfig, path: &str) -> Result<BackupSumma
     let tables = mssql::list_tables(&mut conn).await?;
 
     let mut dump = format!(
-        "-- dbui backup (sqlserver) database={}\n-- data-only: INSERT statements; restore into an existing schema\n",
+        "-- purequery backup (sqlserver) database={}\n-- data-only: INSERT statements; restore into an existing schema\n",
         config.database
     );
 
@@ -742,8 +742,8 @@ mod tests {
     #[tokio::test]
     async fn should_copy_the_source_file_and_report_its_byte_length() {
         let dir = std::env::temp_dir();
-        let from = dir.join("dbui-backup-native-src.bin");
-        let to = dir.join("dbui-backup-native-dest.bin");
+        let from = dir.join("purequery-backup-native-src.bin");
+        let to = dir.join("purequery-backup-native-dest.bin");
         let contents = b"the ogre named Shrek guards these bytes";
         std::fs::write(&from, contents).expect("write temp source");
         let _ = std::fs::remove_file(&to);
@@ -775,8 +775,8 @@ mod tests {
     #[tokio::test]
     async fn should_return_err_when_the_copyfile_source_is_missing() {
         let dir = std::env::temp_dir();
-        let from = dir.join("dbui-backup-native-nonexistent.bin");
-        let to = dir.join("dbui-backup-native-missing-dest.bin");
+        let from = dir.join("purequery-backup-native-nonexistent.bin");
+        let to = dir.join("purequery-backup-native-missing-dest.bin");
         let _ = std::fs::remove_file(&from);
         let _ = std::fs::remove_file(&to);
 

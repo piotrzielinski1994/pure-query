@@ -15,8 +15,8 @@ Coverage threshold: none (no enforced threshold in `vitest.config.ts`).
 
 ## 2. Approach & key decisions
 
-- **Port `requi`'s `cmdk` + radix-dialog components**, adapted to dbui conventions:
-  - `requi` imports `@radix-ui/react-dialog`; dbui uses the **`radix-ui` umbrella** (`Dialog`
+- **Port `requi`'s `cmdk` + radix-dialog components**, adapted to purequery conventions:
+  - `requi` imports `@radix-ui/react-dialog`; purequery uses the **`radix-ui` umbrella** (`Dialog`
     is exported). The new `dialog.tsx` imports `{ Dialog as DialogPrimitive } from "radix-ui"`,
     matching `tabs.tsx`.
   - `command.tsx` is copied near-verbatim (it only depends on `cmdk` + our `dialog.tsx`).
@@ -87,7 +87,7 @@ maps each AC to its test, probes UI states (closed/open/empty/running) and edge 
 
 | Date | Decision | Rationale |
 | ---- | -------- | --------- |
-| 2026-06-20 | Palette-only; drop `requi`'s shortcut registry + settings persistence | dbui has no settings layer; rebinding is unrequested (YAGNI). Fixed Cmd/Ctrl+K is enough. |
+| 2026-06-20 | Palette-only; drop `requi`'s shortcut registry + settings persistence | purequery has no settings layer; rebinding is unrequested (YAGNI). Fixed Cmd/Ctrl+K is enough. |
 | 2026-06-20 | Reuse `radix-ui` umbrella for Dialog instead of adding `@radix-ui/react-dialog` | Matches existing `tabs.tsx`/`select.tsx` import style; one fewer dep. |
 | 2026-06-20 | Tab-management commands only (no navigate/sub-tab/view-toggle) | User-selected scope. |
 | 2026-06-20 | `when` predicate per command def (strategy gating) over inline JSX conditionals | Avoids ifology in the palette render; applicability lives with the def. |

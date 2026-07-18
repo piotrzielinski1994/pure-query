@@ -11,7 +11,7 @@ import { fixtureTree } from "@/components/workspace/__tests__/fixtures";
 
 // The tree keyboard nav is Slice B: it reads the resolved tree-* bindings (Slice C, already merged)
 // and drives roving tabIndex + arrow/Enter/Alt/Shift+F10 from a per-row onKeyDown. jsdom's
-// detectPlatform is "mac", but dbui's matcher treats Mod = meta||ctrl and the tree defaults are bare
+// detectPlatform is "mac", but purequery's matcher treats Mod = meta||ctrl and the tree defaults are bare
 // keys + Shift/Alt combos, so plain key events with shiftKey/altKey are enough.
 vi.mock("@/lib/tauri", () => ({
   connectDatabase: vi.fn(),

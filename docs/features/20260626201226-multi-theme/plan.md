@@ -7,12 +7,12 @@ Coverage threshold: none (no `thresholds` in vitest.config / package.json).
 
 ## Chosen approach
 
-Mirror requi's theme subsystem file-for-file, adapting only where dbui's surrounding infra differs.
+Mirror requi's theme subsystem file-for-file, adapting only where purequery's surrounding infra differs.
 requi decomposes "multi-theme" into **mode** (`light|dark|system`) + **sparse per-mode color
 overrides** (raw-JSON edited, zod-schema validated), persisted across `settings.json` (mode) +
 `theme.json` (colors), applied to the DOM as `.dark` class + inline CSS vars, and fed to CodeMirror
-via theme-token-driven extension factories. dbui already has the dormant `:root`/`.dark` CSS blocks,
-so Part A is mostly wiring; Part B brings the JSON-editor + zod + active-editor-save infra dbui
+via theme-token-driven extension factories. purequery already has the dormant `:root`/`.dark` CSS blocks,
+so Part A is mostly wiring; Part B brings the JSON-editor + zod + active-editor-save infra purequery
 lacks.
 
 Domain gate (recorded in Decision Log): neither `pz-ddd` nor `pz-archetypes` applies - UI + settings
@@ -47,7 +47,7 @@ shortcut).** Each layer testable in isolation.
 
 New `src/lib/theme/`:
 - `theme-defaults.ts` - `APP_TOKENS`, `EDITOR_TOKENS`, `DEFAULT_THEME_COLORS` (exact oklch values
-  from requi, app tokens mirroring dbui `index.css` `:root`/`.dark`).
+  from requi, app tokens mirroring purequery `index.css` `:root`/`.dark`).
 - `effective-mode.ts` - `resolveEffectiveMode(mode, prefersDark)`.
 - `cycle-mode.ts` - `cycleThemeMode` (light->dark->system).
 - `toggle-message.ts` - `themeToggleMessage(mode, prefersDark)`.
@@ -90,7 +90,7 @@ derives `effectiveColors[effectiveMode].editor` + `isDark`, and adds them to the
   + hover + themed chrome/highlight). Port requi.
 - `src/components/workspace/editor-theme.ts` - the shared JSON-editor factories
   (`makeChrome`/`makeHighlight`/`makeEditorExtensions`/`emptyTolerantJsonLinter`/`EditorColors`).
-  (Adapted: dbui's SQL editor already has its own chrome; this is the JSON-editor variant.)
+  (Adapted: purequery's SQL editor already has its own chrome; this is the JSON-editor variant.)
 
 ### Slice G - active-editor save seam (1:1 port, load-bearing subset) (AC-012)
 
@@ -100,7 +100,7 @@ derives `effectiveColors[effectiveMode].editor` + `isDark`, and adds them to the
 - State `activeEditor` + `registerActiveEditor(editor|null)` (stable useCallback).
 - Derived `editorDirty`, `popupCanSave`; actions `saveActive`, `saveActiveEditor`.
 - `commitToTree` kept on the type (no-op for the theme editor, as in requi) but the close-confirm /
-  PendingClose / dirtyRequestIds machinery is NOT ported - dbui has no request/config/tab-close
+  PendingClose / dirtyRequestIds machinery is NOT ported - purequery has no request/config/tab-close
   consumers, and requi's own theme editor uses a no-op commit and the Mod+S `saveActive` path only.
   (Recorded as a deliberate scope decision.)
 - `RawJsonEditor` (new `src/components/workspace/config-editor.tsx`, theme-only shape): `behaviorRef`
@@ -198,7 +198,7 @@ RED-proven tests: Mod+S save in the color editor, and HomePage `persistChrome` t
 | 2026-06-26 | Domain gate: neither pz-ddd nor pz-archetypes applies | UI + settings persistence; no domain aggregate/consistency boundary or accounting/inventory/etc archetype |
 | 2026-06-26 | Full mirror of requi (mode A + color-override editor B), both UI surfaces | User choice (Full mirror A+B; /settings + palette + shortcut) |
 | 2026-06-26 | Persistence split: theme.mode -> settings.json, theme.colors -> theme.json (key "colors") | Mirror requi - a color scheme is device-syncable on its own; tolerant merge drops garbage per-token |
-| 2026-06-26 | Did NOT port requi's full active-editor seam (registerActiveEditor / PendingClose / close-confirm) | dbui has no request/config/tab-close consumers; the color editor saves self-contained via a Save button + Mod+S keymap. Same Cmd+S feel, no dead subsystem |
+| 2026-06-26 | Did NOT port requi's full active-editor seam (registerActiveEditor / PendingClose / close-confirm) | purequery has no request/config/tab-close consumers; the color editor saves self-contained via a Save button + Mod+S keymap. Same Cmd+S feel, no dead subsystem |
 | 2026-06-26 | New deps: zod v4, @codemirror/lang-json, @codemirror/lint, codemirror-json-schema, @types/json-schema | requi's exact JSON-schema-IntelliSense stack; zod v4's built-in z.toJSONSchema (no zod-to-json-schema) |
 | 2026-06-26 | vitest.config server.deps.inline: ["codemirror-json-schema"] | The pkg ships ESM with extensionless relative imports Vitest's externalized resolver can't follow (mirror requi's config) |
 | 2026-06-26 | HomePage onPersist folds current theme back into chrome writes (persistChrome) | The workspace persists only the UI-chrome slice; without the fold a chrome toggle clobbers theme.colors to default. onPersist typed `Omit<Settings,"theme">` so the omission is explicit |

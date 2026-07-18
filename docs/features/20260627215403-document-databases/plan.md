@@ -33,7 +33,7 @@ Each step is its own red-green cycle and (where it maps to ACs) its own commit
 
 ### Phase A - docker test-stack (AC-015)
 1. Add `mongo:7` service to `.pzielinski/test-stack/docker-compose.yml` (port `27018:27017`,
-   root user `dbui`/`dbui`, db `dbui_test`). Add `db-init/mongo/seed.js` seeding collections:
+   root user `purequery`/`purequery`, db `purequery_test`). Add `db-init/mongo/seed.js` seeding collections:
    `users` (nested address object + tags array), `orders` (items array of subdocs,
    heterogeneous), `events` (disjoint field sets across docs). Update test-stack `README.md`
    with the Mongo credentials. **Stop the running test-stack first**, then `up -d` (user

@@ -5,7 +5,7 @@ Jira: n/a (backlog F16, `.pzielinski/todos.md`)
 ## Overview
 
 Add a per-database **Backup** action that exports the database to a user-chosen file. The dump is
-**NATIVE** - dbui generates it itself over its own connection, with NO external CLI tool and NO
+**NATIVE** - purequery generates it itself over its own connection, with NO external CLI tool and NO
 process spawn (the user installs nothing). Per engine:
 
 - **Postgres / MySQL** -> a `.sql` file of **data-only `INSERT` statements**. No DDL is synthesized
@@ -13,7 +13,7 @@ process spawn (the user installs nothing). Per engine:
   dump restores into a pre-existing schema (e.g. migration-managed).
 - **SQLite** -> a byte copy of the database file (exact schema + data).
 - **MongoDB** -> a `.jsonl` file, one canonical Extended JSON document per line (round-trips every
-  BSON type; restorable with `mongoimport` or a future dbui restore).
+  BSON type; restorable with `mongoimport` or a future purequery restore).
 
 Outcome surfaces in the existing **Logs** bottom panel (backend `log::` lines) plus a completion
 toast. Design history: this REVERSED an initial "spawn the engine's system dump tool" design after

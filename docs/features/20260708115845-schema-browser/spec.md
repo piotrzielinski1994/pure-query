@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-Today dbui shows only the data in a table (the grid) plus a thin per-column header (type / nullable /
+Today purequery shows only the data in a table (the grid) plus a thin per-column header (type / nullable /
 PK, from F2 `#13`). There is no way to inspect a table's full structure - column defaults, indexes,
 foreign keys, or check/unique constraints - and the "Views" database tab is a dead panel: the
 `views: []` array is seeded empty on connect and never populated from the real catalog.
@@ -27,7 +27,7 @@ F6 adds two independent surfaces, both read-only metadata browsing over the alre
 
 As a developer inspecting an unfamiliar database, I want to see each table's full structure (columns
 with defaults, indexes, foreign keys, constraints) and the database's real views, so I understand the
-schema without leaving dbui or writing `information_schema` queries by hand.
+schema without leaving purequery or writing `information_schema` queries by hand.
 
 ### Approved decisions (from grilling)
 

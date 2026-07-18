@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 // Imported even though it does not exist yet: the test must fail on the missing
 // module, not on a typo. Once tree-edit.ts ships, these assertions pin the pure
 // tree ops (findNode / containsId / removeNode / insertNode) that moveNode is
-// built on. dbui node kinds are folder / database / table.
+// built on. purequery node kinds are folder / database / table.
 import {
   findNode,
   containsId,

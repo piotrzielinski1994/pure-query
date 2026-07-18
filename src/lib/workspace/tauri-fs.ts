@@ -14,7 +14,7 @@ import {
 } from "@/lib/workspace/reconcile";
 
 const MANAGED_FILE =
-  /(?:^|\/)folder\.json$|\.db\.json$|^dbui\.workspace\.json$/;
+  /(?:^|\/)folder\.json$|\.db\.json$|^purequery\.workspace\.json$/;
 
 async function toResult<T>(
   promise: Promise<T>,

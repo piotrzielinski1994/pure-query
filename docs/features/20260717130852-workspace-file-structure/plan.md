@@ -73,7 +73,7 @@ avoid a cycle, or import the type once disk-format exists - order Task 2 before 
 `emptyDirsAfterRemoval`.
 - [ ] Failing tests: writes only changed, removes only stale managed files, unchanged untouched;
   `emptyDirsAfterRemoval` deepest-first (TC-008, TC-009).
-- [ ] Copy requi's `reconcile.ts`, set `MANAGED_FILE = /(?:^|\/)folder\.json$|\.db\.json$|^dbui\.workspace\.json$/`,
+- [ ] Copy requi's `reconcile.ts`, set `MANAGED_FILE = /(?:^|\/)folder\.json$|\.db\.json$|^purequery\.workspace\.json$/`,
   DROP `ENV_FILE`/`survivingDirs`-for-env branch (removal = `!in next && MANAGED_FILE`). Commit.
 
 ### Task 3: `WorkspaceFs` port + in-memory fs
@@ -89,7 +89,7 @@ files): Promise<WriteResult> }`; `ReadResult = {ok:true;files} | {ok:false;error
 **Files:** Modify `workspace.ts`; Create `disk-format.ts` + `__tests__/disk-format.test.ts`;
 delete/trim blob-path tests.
 **Consumes:** `slugify`/`uniqueSlug`, the db-field merge helpers.
-**Produces:** `FileMap`, `MANIFEST = "dbui.workspace.json"`, `serialize(tree: TreeNode[], name?:
+**Produces:** `FileMap`, `MANIFEST = "purequery.workspace.json"`, `serialize(tree: TreeNode[], name?:
 string): FileMap`, `deserialize(files: FileMap): DeserializeResult`; from workspace.ts:
 `mergeDatabaseFile(value): PersistedDatabase | null`, `hydrateDatabase(p): DatabaseNode`,
 `dehydrateDatabase(node): PersistedDatabase`.
@@ -115,7 +115,7 @@ string): FileMap`, `deserialize(files: FileMap): DeserializeResult`; from worksp
 **Produces:** `createTauriWorkspaceFs(): WorkspaceFs`.
 - [ ] Failing test (mock `@tauri-apps/plugin-fs` like requi's `tauri-fs.test.ts`): read collects managed
   files; write mkdir+reconcile writes changed / removes stale.
-- [ ] Copy requi's `tauri-fs.ts`, set `MANAGED_FILE` to the dbui set, DROP `writeEnv` + the `READONLY_FILE`
+- [ ] Copy requi's `tauri-fs.ts`, set `MANAGED_FILE` to the purequery set, DROP `writeEnv` + the `READONLY_FILE`
   `.env` capture. Commit.
 
 ### Task 6: `folder-picker`
@@ -159,7 +159,7 @@ sidebar empty-state; delete `tauri-store.ts` + `workspace-store-context.tsx` (+ 
 ## Cross-cutting notes
 
 - **Approach / key decisions**: verbatim requi port (proven, sibling-repo rule) minus env; the ONE
-  divergence is in-file `id` (dbui ids are UUIDs referenced by settings/table-id/FK-nav - path-derived
+  divergence is in-file `id` (purequery ids are UUIDs referenced by settings/table-id/FK-nav - path-derived
   would break them). Reuse `workspace.ts`'s tolerant merge helpers as the db-field codec (don't rewrite
   ~200 lines of validation). Fresh-start migration (old `workspace.json` orphaned, not read).
 - **Edge cases** (spec §Edge Cases): unreadable path → fresh writable; malformed file → skip+report;
@@ -201,6 +201,6 @@ installed via `npm i`.
 | 2026-07-17 | Full requi picker model (user-picked folder + `settings.workspacePath` + empty state + open-workspace cmd), not auto app-data-dir | User chose it; git-friendly/portable. Accepted: plaintext DB passwords land in a user-chosen folder (documented leak surface) |
 | 2026-07-17 | Fresh-start migration - old `workspace.json` ignored (not read/migrated/deleted) | User chose it; avoids a one-shot migrator + backup logic |
 | 2026-07-17 | Scripts/variables INLINE in `*.db.json` (not separate `.sql`/`.js` files) | User chose it; one-file-per-entity, smallest reconcile surface (mirrors requi keeping body+config in `.req.json`) |
-| 2026-07-17 | Store node `id` INSIDE each file; path-derived id only as fallback (DIVERGES from requi) | dbui ids are `crypto.randomUUID()` referenced by `settings.json` (expandedIds/openTabIds), the table-id formula `${databaseId}::${schema}::${name}`, and FK-nav; path-derived ids break on first rename/move. In-file id keeps every existing consumer untouched |
+| 2026-07-17 | Store node `id` INSIDE each file; path-derived id only as fallback (DIVERGES from requi) | purequery ids are `crypto.randomUUID()` referenced by `settings.json` (expandedIds/openTabIds), the table-id formula `${databaseId}::${schema}::${name}`, and FK-nav; path-derived ids break on first rename/move. In-file id keeps every existing consumer untouched |
 | 2026-07-17 | Reuse `workspace.ts`'s tolerant merge helpers as the per-DB field codec; delete only the whole-tree blob path | ~200 lines of validated field-merge logic already correct; disk-format only adds the tree↔FileMap walk + manifest |
 | 2026-07-17 | Design gate: evaluated ddd/archetypes/codebase-design, invoked none | No new domain model (pure serialization); the port seam is copied from requi's proven shape, no new interface design |

@@ -6,7 +6,7 @@
 
 ## 1. Overview
 
-dbui ships a fixed dark-ish palette: `src/index.css` defines both a `:root` (light) and a `.dark`
+purequery ships a fixed dark-ish palette: `src/index.css` defines both a `:root` (light) and a `.dark`
 token block, but nothing ever toggles `.dark`, so the `.dark` block and every `dark:` Tailwind
 variant are dead, and the SQL editor is hardcoded to a Darcula theme. There is no way to choose an
 appearance.
@@ -29,7 +29,7 @@ exactly as in requi (named presets are out of scope / YAGNI).
 
 ### User Story
 
-As a dbui user, I want to switch the app between light, dark, and following my OS, and optionally
+As a purequery user, I want to switch the app between light, dark, and following my OS, and optionally
 tweak individual colors per mode, so the client matches my environment and preferences - and so the
 SQL editor recolors to match.
 
@@ -48,7 +48,7 @@ SQL editor recolors to match.
   (factories `makeSqlChrome(colors,isDark)` / `makeSqlHighlight(colors)`), recomputed from the theme
   context; editor tokens flow through CodeMirror extensions, NOT the DOM.
 - **Deviation from requi (flagged)**: requi's raw-JSON editor saves via its `registerActiveEditor`
-  active-editor descriptor (`Mod+S`/close-confirm), a subsystem dbui does not have. dbui's color
+  active-editor descriptor (`Mod+S`/close-confirm), a subsystem purequery does not have. purequery's color
   editor will save via a **self-contained `Mod/Ctrl+S` keymap inside the JSON editor** (same
   keyboard feel, no descriptor port) plus an explicit **Save** button. Invalid JSON blocks the save.
 

@@ -114,7 +114,7 @@ describe("WorkspaceLoader loaded workspace (TC-004)", () => {
   // AC-009 - behavior: a partial load surfaces the skipped file in the console
   it("should load the good nodes and surface a skipped malformed file", async () => {
     const files: FileMap = {
-      "dbui.workspace.json": JSON.stringify({ schemaVersion: 1, name: "Partial" }),
+      "purequery.workspace.json": JSON.stringify({ schemaVersion: 1, name: "Partial" }),
       "good.db.json": JSON.stringify({
         id: "db-good",
         name: "good_db",
@@ -208,7 +208,7 @@ describe("WorkspaceLoader fresh writable (TC-016)", () => {
     );
 
     await waitFor(() =>
-      expect(workspaces["/ws/fresh"]?.["dbui.workspace.json"]).toBeDefined(),
+      expect(workspaces["/ws/fresh"]?.["purequery.workspace.json"]).toBeDefined(),
     );
     const written = Object.keys(workspaces["/ws/fresh"] ?? {});
     expect(written.some((path) => path.endsWith(".db.json"))).toBe(true);

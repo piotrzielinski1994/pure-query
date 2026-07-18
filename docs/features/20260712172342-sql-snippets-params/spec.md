@@ -56,7 +56,7 @@ SQL editor buffer "... {{userId}} ..."                        │
 - **Frontend Variables tab**: a new `DatabaseTab` value `"variables"` added to `SQL_SECTIONS` and
   `MONGO_SECTIONS` in `database-card.tsx`. The tab renders a `VariablesTab` component wrapping a
   small editable `name`/`value` grid (ported/adapted from requi's `EditableKeyValueTable`, minus the
-  enable-toggle and the `{{var}}` value-highlight - dbui has no environment cascade). Edits flow to a
+  enable-toggle and the `{{var}}` value-highlight - purequery has no environment cascade). Edits flow to a
   provider action `setDatabaseVariables(id, variables)` (mirrors `setDatabaseReadOnly`), which
   `setTree`s and rides the existing `onTreeChange` persist effect. No new persistence wiring.
 - **Substitution at the Run boundary** in `sql-tab.tsx` `submit()`: after resolving the effective
@@ -65,7 +65,7 @@ SQL editor buffer "... {{userId}} ..."                        │
   History error line) and return. On `ok`, continue with the substituted text (the substituted text
   is what's sent, logged to History, and - for manual-commit - recorded as the tx statement).
 - **Highlight** (`{{name}}` decoration): a CodeMirror `MatchDecorator` + `ViewPlugin` in
-  `sql-editor.tsx` marks every `\{\{\s*[A-Za-z0-9_]+\s*\}\}` with a `cm-dbui-variable` class, styled
+  `sql-editor.tsx` marks every `\{\{\s*[A-Za-z0-9_]+\s*\}\}` with a `cm-purequery-variable` class, styled
   via the editor theme (reuse an existing `editorColors` hue - `property`). Added to the full editor
   extensions only (not the `singleLine` filter row). Engine-agnostic (same token in SQL + Mongo
   JSON). A `{{name}}` that is currently undefined is NOT visually distinguished (highlight marks the
@@ -120,7 +120,7 @@ Persistence (`workspace.js` / `workspace.ts`), mirroring `savedScripts` exactly:
 - AC-010: Substitution composes with existing gates in order: read-only write-block and
   manual-commit `beginTransaction` see the SUBSTITUTED text (a manual-commit write records the
   substituted statement in the tx list, not the `{{}}` template).
-- AC-011: `{{name}}`-shaped tokens are decorated with the `cm-dbui-variable` class in the full SQL
+- AC-011: `{{name}}`-shaped tokens are decorated with the `cm-purequery-variable` class in the full SQL
   editor (not the single-line filter row).
 
 ## Test Cases
@@ -150,7 +150,7 @@ Persistence (`workspace.js` / `workspace.ts`), mirroring `savedScripts` exactly:
   `DELETE FROM t WHERE id = 7` in the Commit modal's statement list (substituted, not template). Maps to: AC-010
 - TC-016 (AC-008 Mongo): with `oid` defined, Run of a Mongo command containing `{{oid}}` calls
   `executeMongo` with the substituted text. Maps to: AC-008
-- TC-017 (AC-011): the full SQL editor renders a `.cm-dbui-variable` element for a `{{userId}}`
+- TC-017 (AC-011): the full SQL editor renders a `.cm-purequery-variable` element for a `{{userId}}`
   token; the single-line filter editor does not decorate. Maps to: AC-011
 
 ## UI States
@@ -161,7 +161,7 @@ Persistence (`workspace.js` / `workspace.ts`), mirroring `savedScripts` exactly:
 | Variables defined    | One row per variable + a trailing blank; remove (trash) drops a row.           |
 | Run, all defined     | Substituted SQL sent; result grid / status as normal.                          |
 | Run, undefined var   | Sticky warning toast "Undefined variable(s): x, y"; History error line; no send.|
-| Editor `{{token}}`   | `{{name}}`-shaped text tinted via `cm-dbui-variable` (property hue).           |
+| Editor `{{token}}`   | `{{name}}`-shaped text tinted via `cm-purequery-variable` (property hue).           |
 
 ## Edge cases
 
@@ -203,6 +203,6 @@ Persistence (`workspace.js` / `workspace.ts`), mirroring `savedScripts` exactly:
 - `SqlTab` Run substitution tests: defined -> substituted send; undefined -> block; manual-commit
   records substituted; Mongo substitutes (TC-013..016), mocking `@/lib/tauri` like
   `manual-commit-sql.test.tsx`.
-- The CodeMirror decoration (TC-017): assert the `.cm-dbui-variable` element renders in the full
+- The CodeMirror decoration (TC-017): assert the `.cm-purequery-variable` element renders in the full
   editor and is absent in the single-line editor. CM measure errors in jsdom are the known harmless
   baseline; the decoration DOM still populates.

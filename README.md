@@ -1,4 +1,4 @@
-# DbUI
+# purequery
 
 A minimal, keyboard-driven, fully configurable, desktop database client.
 
@@ -17,7 +17,7 @@ sidebar drag-and-drop.
 If the Rust toolchain or system prerequisites are missing, `npm start` fails fast with
 a build error from Cargo.
 
-The per-database **Backup...** action needs no external tools - dbui generates the dump itself
+The per-database **Backup...** action needs no external tools - purequery generates the dump itself
 (Postgres/MySQL -> a data-only `.sql` INSERT script, SQLite -> a file copy, MongoDB -> a `.jsonl`
 Extended-JSON export).
 
@@ -47,7 +47,7 @@ Rust backend tests: `cd src-tauri && cargo test`.
 The dev server runs on port 1431 (set in both `vite.config.ts` and `src-tauri/tauri.conf.json`).
 
 > The home route renders the workspace shell: a sidebar tree of databases grouped under
-> optional folders, loaded from a user-picked **workspace folder** (a `dbui.workspace.json`
+> optional folders, loaded from a user-picked **workspace folder** (a `purequery.workspace.json`
 > manifest + one `<slug>.db.json` per database + `<slug>/folder.json` per folder). On first
 > launch no folder is open - the app shows an "Open workspace folder..." prompt; pick a folder
 > (or press **Cmd/Ctrl+O** / the "Open workspace folder" palette command) and its path persists in
@@ -121,7 +121,7 @@ The dev server runs on port 1431 (set in both `vite.config.ts` and `src-tauri/ta
 > constraints (MongoDB: collection indexes only). Right-clicking a SQL table row offers a **Go to
 > `<table>`** item per outbound foreign key with a non-null value, jumping to the referenced row (opens
 > that table's tab, filtered to the referenced key); FK columns are marked `FK` in the grid header. The sidebar tree + its connection configs persist as files
-> inside the picked workspace folder (`dbui.workspace.json` + `*.db.json` + `folder.json`); UI/layout state (panel toggles, split orientation, expanded nodes, open
+> inside the picked workspace folder (`purequery.workspace.json` + `*.db.json` + `folder.json`); UI/layout state (panel toggles, split orientation, expanded nodes, open
 > tabs, whether the window was fullscreen at exit - restored on next launch, and the default
 > **row limit** a freshly opened table's grid loads per page, set in `/settings`) persists in
 > `settings.json`; the theme **mode** also lives in `settings.json` while the

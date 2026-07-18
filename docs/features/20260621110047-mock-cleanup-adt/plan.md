@@ -132,7 +132,7 @@ Two slices, sequenced so the import churn lands once.
 | Date | Decision | Rationale |
 | ---- | -------- | --------- |
 | 2026-06-21 | Types + `connectionOf` -> `src/lib/workspace/model.ts`; delete `mock-data.ts` entirely | Mirrors `requi` (CLAUDE.local.md: reuse requi's approach). `connectionOf` is logic over `DatabaseNode`, belongs with the types, not in a "mock" module. File has nothing left after the move. |
-| 2026-06-21 | Generic `Result<T>`+`toResult` in `src/lib/result.ts`; apply at call site, keep boundary fns throwing | Reusable for the other Tauri calls later (F2/F5). Keeping `connectDatabase`/`updateTable` throwing avoids migrating ~7 test files' `mockResolvedValue`/`mockRejectedValue` mocks for zero behavior gain (spec out-of-scope). `requi` puts its ADT in the boundary; we put the wrap at the call site because dbui's tests mock the boundary directly. |
+| 2026-06-21 | Generic `Result<T>`+`toResult` in `src/lib/result.ts`; apply at call site, keep boundary fns throwing | Reusable for the other Tauri calls later (F2/F5). Keeping `connectDatabase`/`updateTable` throwing avoids migrating ~7 test files' `mockResolvedValue`/`mockRejectedValue` mocks for zero behavior gain (spec out-of-scope). `requi` puts its ADT in the boundary; we put the wrap at the call site because purequery's tests mock the boundary directly. |
 | 2026-06-21 | Bundle #23 + #22 on one branch | #23 repoints imports in the exact two files #22 rewrites; bundling avoids double-touching them. |
 
 ## AC traceability (verified 2026-06-21)

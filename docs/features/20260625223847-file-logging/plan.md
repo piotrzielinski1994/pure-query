@@ -1,6 +1,6 @@
 # Plan - file logging
 
-Mirror `requi`'s logging setup (the newest, most refined of the three sibling apps) into `dbui`, adapting the app name `requi`/`vidui` -> `dbui`. Omit requi's `log:default` capability: `log:default` gates the official `@tauri-apps/plugin-log` JS API (which dbui never imports); the custom `log_message` invoke command is covered by `core:default`. Build-time capability-schema validation confirms no permission error.
+Mirror `requi`'s logging setup (the newest, most refined of the three sibling apps) into `purequery`, adapting the app name `requi`/`vidui` -> `purequery`. Omit requi's `log:default` capability: `log:default` gates the official `@tauri-apps/plugin-log` JS API (which purequery never imports); the custom `log_message` invoke command is covered by `core:default`. Build-time capability-schema validation confirms no permission error.
 
 ## Files to create / modify
 
@@ -11,10 +11,10 @@ Mirror `requi`'s logging setup (the newest, most refined of the three sibling ap
    - `log = "0.4"`
    - `chrono = { version = "0.4", default-features = false, features = ["clock"] }`
 
-2. `src/logging.rs` (NEW) - port of `requi/src-tauri/src/logging.rs`, `requi-` -> `dbui-`:
+2. `src/logging.rs` (NEW) - port of `requi/src-tauri/src/logging.rs`, `requi-` -> `purequery-`:
    - `launch_log_name(year, month, day, hour, minute, second) -> String` (pure, tested).
    - `current_launch_log_name() -> String` (reads `chrono::Local::now()`).
-   - `init<R>(app: &AppHandle<R>)` - builds `tauri-plugin-log` with `targets([Stdout, LogDir{file_name: Some(stem)}])`, `Info`, `KeepAll`, `max_file_size(50_000_000)`; best-effort - on plugin error print `"dbui: file logging disabled (log dir unwritable)"` to stderr and return.
+   - `init<R>(app: &AppHandle<R>)` - builds `tauri-plugin-log` with `targets([Stdout, LogDir{file_name: Some(stem)}])`, `Info`, `KeepAll`, `max_file_size(50_000_000)`; best-effort - on plugin error print `"purequery: file logging disabled (log dir unwritable)"` to stderr and return.
    - `log_message(level: String, message: String)` Tauri command - match level -> `log::error!/warn!/debug!/info!`.
    - `#[cfg(test)] mod tests` - 3 unit tests (TC-001..003).
 

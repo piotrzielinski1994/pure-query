@@ -1470,9 +1470,9 @@ mod tests {
             host: "localhost".to_string(),
             port: 27018,
             database: String::new(),
-            user: "dbui".to_string(),
-            password: "dbui".to_string(),
-            uri: Some("mongodb://dbui:dbui@localhost:27018/dbui_test?authSource=admin".to_string()),
+            user: "purequery".to_string(),
+            password: "purequery".to_string(),
+            uri: Some("mongodb://purequery:purequery@localhost:27018/purequery_test?authSource=admin".to_string()),
         };
         let id = "live-test".to_string();
 
@@ -1588,9 +1588,9 @@ mod tests {
             host: "localhost".to_string(),
             port: 27018,
             database: String::new(),
-            user: "dbui".to_string(),
-            password: "dbui".to_string(),
-            uri: Some("mongodb://dbui:dbui@localhost:27018/dbui_test?authSource=admin".to_string()),
+            user: "purequery".to_string(),
+            password: "purequery".to_string(),
+            uri: Some("mongodb://purequery:purequery@localhost:27018/purequery_test?authSource=admin".to_string()),
         };
         let id = "live-write-test".to_string();
         super::connect(id.clone(), config).await.expect("connect");
@@ -1598,7 +1598,7 @@ mod tests {
         // Clean any leftover from a previous run.
         let _ = super::run_query(
             id.clone(),
-            "db.dbui_scratch.deleteMany({})".to_string(),
+            "db.purequery_scratch.deleteMany({})".to_string(),
             200,
             "w0".to_string(),
         )
@@ -1607,7 +1607,7 @@ mod tests {
         // insertOne -> 1 inserted.
         let inserted = super::run_query(
             id.clone(),
-            "db.dbui_scratch.insertOne({ \"_id\": \"w1\", \"age\": 1 })".to_string(),
+            "db.purequery_scratch.insertOne({ \"_id\": \"w1\", \"age\": 1 })".to_string(),
             200,
             "w1".to_string(),
         )
@@ -1619,7 +1619,7 @@ mod tests {
         // updateOne -> 1 modified.
         let updated = super::run_query(
             id.clone(),
-            "db.dbui_scratch.updateOne({ \"_id\": \"w1\" }, { \"$set\": { \"age\": 99 } })"
+            "db.purequery_scratch.updateOne({ \"_id\": \"w1\" }, { \"$set\": { \"age\": 99 } })"
                 .to_string(),
             200,
             "w2".to_string(),
@@ -1631,7 +1631,7 @@ mod tests {
         // read back -> age is now 99.
         let read = super::run_query(
             id.clone(),
-            "db.dbui_scratch.find({ \"_id\": \"w1\" })".to_string(),
+            "db.purequery_scratch.find({ \"_id\": \"w1\" })".to_string(),
             200,
             "w3".to_string(),
         )
@@ -1648,7 +1648,7 @@ mod tests {
         // deleteOne -> 1 deleted, collection empty again.
         let deleted = super::run_query(
             id.clone(),
-            "db.dbui_scratch.deleteOne({ \"_id\": \"w1\" })".to_string(),
+            "db.purequery_scratch.deleteOne({ \"_id\": \"w1\" })".to_string(),
             200,
             "w4".to_string(),
         )

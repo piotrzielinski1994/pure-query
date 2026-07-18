@@ -11,7 +11,7 @@ const dropBlankNames = (rows: Variable[]) =>
 
 // The per-database Variables tab: an editable name/value grid. Referenced in the SQL/Query editor as
 // `{{name}}` and substituted verbatim on Run. Adapted from requi's EditableKeyValueTable (minus the
-// enable toggle and the {{var}} value-highlight - dbui has no environment cascade). Each edit commits
+// enable toggle and the {{var}} value-highlight - purequery has no environment cascade). Each edit commits
 // to the provider immediately (setDatabaseVariables), riding the existing tree-persist effect. A
 // trailing blank row always shows; typing into it materializes the row + a fresh blank; a blank-name
 // row is dropped on commit.

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 // AC-009/010 wire @codemirror/search into the full CodeMirror editors (SQL / JS / JSON) to power a
-// dbui-styled find panel. jsdom cannot drive the CM search UI interactively, so the light contract
+// purequery-styled find panel. jsdom cannot drive the CM search UI interactively, so the light contract
 // here is that the search package is a DIRECT project dependency (the plan promotes it from the
 // current transitive-only state) so the editors can import search({createPanel}).
 const packageJson = JSON.parse(

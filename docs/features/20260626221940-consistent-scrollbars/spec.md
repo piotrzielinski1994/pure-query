@@ -6,7 +6,7 @@
 
 ## 1. Overview
 
-DbUI currently renders **two unrelated scrollbar treatments**, so scrollable regions look
+purequery currently renders **two unrelated scrollbar treatments**, so scrollable regions look
 inconsistent:
 
 - **Radix `ScrollArea`** (overlay, custom thumb) - used by the sidebar tree
@@ -24,9 +24,9 @@ rule stands - see [docs/design.md](../../../docs/design.md)). The Tauri app ship
 + Linux from one WebView, so "macOS-style" means *we* draw the bar identically on all three, not
 "defer to the OS".
 
-This feature ports requi's `20260625011440-consistent-scrollbars` feature. DbUI starts from the
+This feature ports requi's `20260625011440-consistent-scrollbars` feature. purequery starts from the
 **same** `scroll-area.tsx` and has **no** scrollbar CSS, so the port is near 1:1, plus one
-dbui-specific concern: the shared **DataGrid** scroll containers (sticky header + column resize).
+purequery-specific concern: the shared **DataGrid** scroll containers (sticky header + column resize).
 
 ### Approach (user-chosen)
 
@@ -131,7 +131,7 @@ Thin, square, semi-transparent, transparent track - tuned to match 2.1:
 
 No `border-radius` (square per decision). The `border: 2px solid transparent` +
 `background-clip: padding-box` gives the thin inset look macOS has, while keeping square ends.
-Theme-driven via `--foreground`, so it adapts to light/dark automatically (DbUI now ships
+Theme-driven via `--foreground`, so it adapts to light/dark automatically (purequery now ships
 multiple themes - the `--foreground` token resolves per active theme).
 
 **Radix coexistence:** Radix `ScrollArea` hides the *native* scrollbar of its viewport via an

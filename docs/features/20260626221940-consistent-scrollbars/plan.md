@@ -1,7 +1,7 @@
 # Consistent macOS-style scrollbars - PLAN
 
 Implements [spec.md](spec.md). Ports requi `20260625011440-consistent-scrollbars` 1:1, plus a
-dbui-specific DataGrid sticky-header step. TDD throughout (red -> green -> refactor).
+purequery-specific DataGrid sticky-header step. TDD throughout (red -> green -> refactor).
 
 ## Chosen approach
 

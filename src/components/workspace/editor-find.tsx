@@ -35,7 +35,7 @@ function matchStats(view: EditorView): { total: number; active: number } {
   return { total, active: total > 0 && active === 0 ? total : active };
 }
 
-// A CodeMirror search panel that renders the shared dbui FindBar (design.md styled) instead of the
+// A CodeMirror search panel that renders the shared purequery FindBar (design.md styled) instead of the
 // library's default panel, driving the standard search commands. Mounted at the top of the editor.
 class FindPanel implements Panel {
   readonly dom: HTMLDivElement;
@@ -44,7 +44,7 @@ class FindPanel implements Panel {
 
   constructor(private readonly view: EditorView) {
     this.dom = document.createElement("div");
-    this.dom.className = "cm-dbui-find";
+    this.dom.className = "cm-purequery-find";
     // Keep the panel's own keystrokes out of the editor's keymap.
     this.dom.addEventListener("keydown", (event) => event.stopPropagation());
   }
@@ -108,7 +108,7 @@ class FindPanel implements Panel {
   }
 }
 
-// The editor find extension: a dbui-styled search panel opened by the resolved open-find binding
+// The editor find extension: a purequery-styled search panel opened by the resolved open-find binding
 // (bridged to its CodeMirror key form, e.g. "Mod-f"). Shared by the SQL, JS, and JSON editors.
 export function editorFind(openKey: string): Extension {
   return [

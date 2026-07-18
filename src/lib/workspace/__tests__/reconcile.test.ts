@@ -11,10 +11,10 @@ describe("planReconcile write set", () => {
   // TC-008 - behavior: a new file lands in write
   it("should include a key in write if it is new in next", () => {
     const current: FileMap = {
-      "dbui.workspace.json": '{"schemaVersion":1,"name":"W"}',
+      "purequery.workspace.json": '{"schemaVersion":1,"name":"W"}',
     };
     const next: FileMap = {
-      "dbui.workspace.json": '{"schemaVersion":1,"name":"W"}',
+      "purequery.workspace.json": '{"schemaVersion":1,"name":"W"}',
       "app.db.json": '{"name":"App"}',
     };
 
@@ -69,7 +69,7 @@ describe("planReconcile remove set", () => {
   // TC-008 - behavior: folder.json and the manifest count as managed
   it("should include orphan folder.json and manifest keys in remove if managed", () => {
     const current: FileMap = {
-      "dbui.workspace.json": '{"schemaVersion":1}',
+      "purequery.workspace.json": '{"schemaVersion":1}',
       "users/folder.json": '{"name":"Users"}',
     };
     const next: FileMap = {};
@@ -77,7 +77,7 @@ describe("planReconcile remove set", () => {
     const result = planReconcile(current, next);
 
     expect(result.remove.sort()).toEqual(
-      ["dbui.workspace.json", "users/folder.json"].sort(),
+      ["purequery.workspace.json", "users/folder.json"].sort(),
     );
   });
 
@@ -100,12 +100,12 @@ describe("planReconcile remove set", () => {
   // TC-009 - behavior: a moved folder's old managed paths are removed, the new written
   it("should include the old managed paths in remove if a folder moved", () => {
     const current: FileMap = {
-      "dbui.workspace.json": '{"schemaVersion":1}',
+      "purequery.workspace.json": '{"schemaVersion":1}',
       "src/folder.json": '{"name":"Src","order":0}',
       "src/get.db.json": '{"name":"Get","order":0}',
     };
     const next: FileMap = {
-      "dbui.workspace.json": '{"schemaVersion":1}',
+      "purequery.workspace.json": '{"schemaVersion":1}',
       "dst/src/folder.json": '{"name":"Src","order":0}',
       "dst/src/get.db.json": '{"name":"Get","order":0}',
     };
@@ -124,11 +124,11 @@ describe("planReconcile remove set", () => {
   // TC-009 - behavior: a renamed node (slug change) removes the old file and writes the new
   it("should plan the old file removed and the new written if a node's slug changed", () => {
     const current: FileMap = {
-      "dbui.workspace.json": '{"schemaVersion":1}',
+      "purequery.workspace.json": '{"schemaVersion":1}',
       "old-name.db.json": '{"id":"db-1","name":"Old Name","order":0}',
     };
     const next: FileMap = {
-      "dbui.workspace.json": '{"schemaVersion":1}',
+      "purequery.workspace.json": '{"schemaVersion":1}',
       "new-name.db.json": '{"id":"db-1","name":"New Name","order":0}',
     };
 
@@ -149,14 +149,14 @@ describe("parentDir", () => {
 
   // behavior: a root-level file has no parent dir
   it("should return null for a root-level path", () => {
-    expect(parentDir("dbui.workspace.json")).toBeNull();
+    expect(parentDir("purequery.workspace.json")).toBeNull();
   });
 });
 
 describe("emptyDirsAfterRemoval", () => {
   // TC-009 - behavior: a dir whose only files were removed is reported, deepest-first
   it("should report a dir as empty if all its files were removed", () => {
-    const next: FileMap = { "dbui.workspace.json": "{}" };
+    const next: FileMap = { "purequery.workspace.json": "{}" };
     const removed = ["src/nested/get.db.json", "src/nested/folder.json"];
 
     const result = emptyDirsAfterRemoval(next, removed);

@@ -4,11 +4,11 @@
 
 Port requi's tree DnD almost verbatim, adapting node kinds. requi's tree uses only
 `@dnd-kit/core` + two pure libs (`tree-locate.ts`, `move.ts`) + a tiny context (`tree-dnd.tsx`) +
-draggable/droppable rows. dbui already has the recursive tree, immutable helpers, folders, and
+draggable/droppable rows. purequery already has the recursive tree, immutable helpers, folders, and
 auto-persistence; the gap is purely DnD wiring.
 
 Key adaptation vs requi:
-- requi node kinds: `folder | request`. dbui: `folder | database | table`.
+- requi node kinds: `folder | request`. purequery: `folder | database | table`.
 - **Draggable**: `folder` and `database` rows. **Not draggable**: `table` leaves.
 - **`inside` (reparent) target**: only `folder` (never `database`, never `table`).
 - **`before`/`after` (reorder)**: any sibling row that is a persisted node (folder/database). A
@@ -24,7 +24,7 @@ No domain modeling (pz-ddd/pz-archetypes): pure UI plumbing on an existing tree 
 ### Create
 
 1. `src/lib/workspace/tree-edit.ts` - pure tree mutation primitives (extracted/mirrored from
-   requi + dbui's inline helpers): `findNode`, `containsId`, `removeNode`, `insertNode`. (dbui's
+   requi + purequery's inline helpers): `findNode`, `containsId`, `removeNode`, `insertNode`. (purequery's
    `workspace-context.tsx` already has private `findNode`/`removeNodeFromTree`; the new file is the
    shared, tested home so `moveNode` and the context can both use it. Keep `removeNodeFromTree`
    delegating to it or replace usage - minimal, no behavior change.)
@@ -34,7 +34,7 @@ No domain modeling (pz-ddd/pz-archetypes): pure UI plumbing on an existing tree 
    `DropPosition`, `emptyZoneId`/`parseEmptyZoneId`, `projectDropPosition`, `dropTarget`.
 4. `src/components/workspace/tree-dnd.tsx` - `DropPosition`/`DropIndicator`/`TreeDndState` types,
    `TreeDndProvider`, `useTreeDnd`.
-5. `src/lib/workspace/__tests__/move.test.ts` - mirror requi's move tests, dbui node kinds.
+5. `src/lib/workspace/__tests__/move.test.ts` - mirror requi's move tests, purequery node kinds.
 6. `src/lib/workspace/__tests__/tree-locate.test.ts` - mirror requi's tree-locate tests.
 7. `src/lib/workspace/__tests__/tree-edit.test.ts` - cover the primitives (insert clamp, remove,
    containsId).
@@ -56,7 +56,7 @@ No domain modeling (pz-ddd/pz-archetypes): pure UI plumbing on an existing tree 
    - `handleDragStart/Over/End/Cancel`: compute `DropIndicator` via `projectDropPosition`, auto-
      expand hovered collapsed folders (AC-010), commit via `moveNode` on end with the no-op guard
      (AC-012). Keep the existing `DeleteRequestProvider`/`DeleteNodeDialog`/empty-state.
-   - Use dbui's `expandedIds`/`toggleExpand` (requi's `expandedFolderIds`/`toggleFolder` equivalent).
+   - Use purequery's `expandedIds`/`toggleExpand` (requi's `expandedFolderIds`/`toggleFolder` equivalent).
 
 10. `src/components/workspace/tree-row.tsx`
     - Add `useRowDnd(id)` hook (draggable + droppable + indicator flags), as requi.

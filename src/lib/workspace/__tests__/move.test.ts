@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 
 // Imported even though it does not exist yet: the test must fail on the missing
 // module, not on a typo. Once move.ts ships, these assertions pin the immutable
-// tree move (AC-001..AC-006, AC-012; edge cases E-1..E-6). dbui node kinds are
+// tree move (AC-001..AC-006, AC-012; edge cases E-1..E-6). purequery node kinds are
 // folder / database / table; only folder is a container, a database is NOT.
 import { moveNode } from "@/lib/workspace/move";
 import type {

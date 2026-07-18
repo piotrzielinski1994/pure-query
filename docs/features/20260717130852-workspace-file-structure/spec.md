@@ -7,7 +7,7 @@ Backlog item (no Jira). Mirrors the `requi` repo's on-disk workspace model.
 Replace the single `workspace.json` (Tauri `LazyStore` blob in the app-data-dir) with a
 **user-picked workspace FOLDER exploded into files + directories**, exactly like `requi`:
 
-- A **manifest** `dbui.workspace.json` at the root (`{ schemaVersion, name }`).
+- A **manifest** `purequery.workspace.json` at the root (`{ schemaVersion, name }`).
 - One **`<slug>/folder.json`** per folder node (`{ id, name, order }`), the folder's children
   living as files inside that directory.
 - One **`<slug>.db.json`** per database node - the full persisted database (connection config +
@@ -27,14 +27,14 @@ and re-add databases.
 
 ### Divergence from requi (the crux)
 
-requi derives a node's `id` from its disk path. **dbui CANNOT** - node ids are `crypto.randomUUID()`
+requi derives a node's `id` from its disk path. **purequery CANNOT** - node ids are `crypto.randomUUID()`
 referenced across `settings.json` (`expandedIds`/`openTabIds`/`activeTabId`), the table-node id
 formula `${databaseId}::${schema}::${name}`, and FK navigation. A path-derived id would break every
-one of those on the first rename/move. So **dbui stores the `id` INSIDE each file** and reads it
+one of those on the first rename/move. So **purequery stores the `id` INSIDE each file** and reads it
 back; a file missing an `id` (hand-authored) falls back to a path-derived id (documented, less
 stable). This keeps every existing id consumer untouched.
 
-Also unlike requi: dbui has **no `.env` / environments / per-folder dotenv** - the disk format is
+Also unlike requi: purequery has **no `.env` / environments / per-folder dotenv** - the disk format is
 strictly the manifest + `folder.json` + `*.db.json` (simpler; no `writeEnv`, no env-color merge).
 
 ### Security note (explicitly accepted)
@@ -53,7 +53,7 @@ this feature.
   `settings.workspacePath` and loads that folder as the workspace.
 - AC-003: Cancelling the folder picker is a no-op (path unchanged, nothing written).
 - AC-004: A loaded workspace folder is READ by recursively collecting its managed files
-  (`dbui.workspace.json`, `**/folder.json`, `**/*.db.json`) and deserialized into the tree:
+  (`purequery.workspace.json`, `**/folder.json`, `**/*.db.json`) and deserialized into the tree:
   folders become `FolderNode`s (from each `folder.json` dir), databases become `DatabaseNode`s (from
   each `*.db.json`), preserving nesting and sibling `order`.
 - AC-005: Every persisted database field round-trips through a file: engine + connection config,
@@ -85,7 +85,7 @@ this feature.
 
 - TC-001 (slug): `slugify` lowercases + hyphenates + trims (`"My DB!" -> "my-db"`, `"" -> "untitled"`);
   `uniqueSlug` suffixes a collision (`-2`, `-3`). Maps to: AC-008.
-- TC-002 (serialize db): `serialize` of a one-database tree emits `dbui.workspace.json` + a
+- TC-002 (serialize db): `serialize` of a one-database tree emits `purequery.workspace.json` + a
   `<slug>.db.json` carrying id/name/engine/config/order + inline scripts/variables; runtime fields
   absent. Maps to: AC-004, AC-005, AC-012.
 - TC-003 (serialize nesting): a folder with a nested database emits `<folder>/folder.json` +
@@ -98,7 +98,7 @@ this feature.
   WITHOUT `id` falls back to a path-derived id. Maps to: AC-006.
 - TC-006 (malformed skip): a `*.db.json` that is invalid JSON, or a folder.json failing validation,
   is skipped and reported in `skipped[]`; sibling valid files still load. Maps to: AC-009.
-- TC-007 (missing manifest): `deserialize` of a FileMap with no `dbui.workspace.json` returns
+- TC-007 (missing manifest): `deserialize` of a FileMap with no `purequery.workspace.json` returns
   `{ ok: false }`. Maps to: AC-009.
 - TC-008 (reconcile write): `planReconcile(current, next)` writes only changed files and removes only
   stale managed files; an unchanged file is neither rewritten nor removed. Maps to: AC-008.
@@ -135,7 +135,7 @@ this feature.
 No change to the runtime `TreeNode` model. Disk shapes (in `disk-format.ts`):
 
 - `FileMap = Record<string, string>` (relative path -> file text).
-- Manifest `dbui.workspace.json`: `{ schemaVersion: 1, name: string }`.
+- Manifest `purequery.workspace.json`: `{ schemaVersion: 1, name: string }`.
 - `folder.json`: `{ id: string, name: string, order: number }`.
 - `<slug>.db.json`: the current `PersistedDatabase` shape + `{ id, order }` (scripts/variables
   inline).

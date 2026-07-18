@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 // Imported even though it does not exist yet: the test must fail on the missing
 // module, not on a typo. Once tree-locate.ts ships, these assertions pin the
 // pointer-relative drop projection and the over -> MoveTarget resolution that
-// drives the tree DnD. dbui node kinds are folder / database / table; only a
+// drives the tree DnD. purequery node kinds are folder / database / table; only a
 // folder is a container (inside band), a database/table is a leaf (no inside).
 import {
   locateNode,
