@@ -78,6 +78,10 @@ export function CommandPalette({
     newTab,
     addDatabase,
     toggleSplitOrientation,
+    goBack,
+    goForward,
+    canGoBack,
+    canGoForward,
   } = useWorkspace();
   const { toggleSidebar, toggleConsole } = useChrome();
   const { toggleJsonView } = useJsonView();
@@ -120,6 +124,8 @@ export function CommandPalette({
     "close-all-tabs": closeAllTabs,
     "next-tab": () => cycleTab(1),
     "prev-tab": () => cycleTab(-1),
+    "nav-back": goBack,
+    "nav-forward": goForward,
     "new-tab": newTab,
     "generate-mock-data": openMockData,
     "toggle-split-orientation": toggleSplitOrientation,
@@ -145,6 +151,8 @@ export function CommandPalette({
     openTabCount: openTabIds.length,
     isSplitView,
     isTableActive,
+    canGoBack,
+    canGoForward,
   };
   const commands = PALETTE_COMMANDS.filter((def) => def.when(state));
 

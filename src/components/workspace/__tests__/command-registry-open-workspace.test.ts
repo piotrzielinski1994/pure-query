@@ -28,6 +28,8 @@ describe("Open workspace palette command", () => {
         openTabCount: 0,
         isSplitView: false,
         isTableActive: false,
+        canGoBack: false,
+        canGoForward: false,
       }),
     ).toBe(true);
   });

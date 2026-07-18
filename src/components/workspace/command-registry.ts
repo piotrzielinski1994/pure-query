@@ -8,6 +8,8 @@ export type PaletteCommandId =
   | "close-all-tabs"
   | "next-tab"
   | "prev-tab"
+  | "nav-back"
+  | "nav-forward"
   | "new-tab"
   | "generate-mock-data"
   | "toggle-split-orientation"
@@ -22,6 +24,8 @@ export type PaletteState = {
   openTabCount: number;
   isSplitView: boolean;
   isTableActive: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
 };
 
 import type { ShortcutActionId } from "@/lib/shortcuts/registry";
@@ -98,6 +102,20 @@ export const PALETTE_COMMANDS: readonly PaletteCommandDef[] = [
     group: "Tabs",
     actionId: "prev-tab",
     when: hasMultipleTabs,
+  },
+  {
+    id: "nav-back",
+    name: "Navigate back",
+    group: "Tabs",
+    actionId: "nav-back",
+    when: (state) => state.canGoBack,
+  },
+  {
+    id: "nav-forward",
+    name: "Navigate forward",
+    group: "Tabs",
+    actionId: "nav-forward",
+    when: (state) => state.canGoForward,
   },
   {
     id: "close-tab",

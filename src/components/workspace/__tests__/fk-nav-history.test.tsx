@@ -121,14 +121,24 @@ const customerFkStructure: TableStructure = {
   constraints: [],
 };
 
+// Exercises the provider nav API that both the command palette and the Mod+[ / Mod+] keymaps call
+// (the content-header arrow buttons were removed). Back/Forward are disabled off canGoBack/canGoForward,
+// mirroring the palette command gates.
 function StateProbe() {
-  const { activeTabId, tableFilters } = useWorkspace();
+  const { activeTabId, tableFilters, goBack, goForward, canGoBack, canGoForward } =
+    useWorkspace();
   return (
     <div>
       <span data-testid="active-tab">{activeTabId ?? ""}</span>
       <span data-testid="customers-filter">
         {tableFilters.get(CUSTOMERS_ID) ?? ""}
       </span>
+      <button type="button" onClick={goBack} disabled={!canGoBack}>
+        Navigate back
+      </button>
+      <button type="button" onClick={goForward} disabled={!canGoForward}>
+        Navigate forward
+      </button>
     </div>
   );
 }

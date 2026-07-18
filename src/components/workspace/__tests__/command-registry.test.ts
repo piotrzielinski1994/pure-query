@@ -9,6 +9,8 @@ const baseState: PaletteState = {
   openTabCount: 1,
   isSplitView: false,
   isTableActive: false,
+  canGoBack: false,
+  canGoForward: false,
 };
 
 function splitCommand() {
