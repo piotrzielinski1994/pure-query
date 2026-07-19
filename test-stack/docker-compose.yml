@@ -1,0 +1,125 @@
+# purequery test stack - Postgres + MySQL seeded for F5 (held pool / transactions / cancel) smoke tests.
+# Ports are deliberately non-default (55432 / 33061) so they never clash with your existing
+# local Postgres (5432/5433) or MySQL. Run from this directory:
+#
+#   docker compose up -d        # start (init scripts seed on first boot of a fresh volume)
+#   docker compose down         # stop, keep data
+#   docker compose down -v      # stop + wipe data (re-seeds on next up)
+#
+# Connect in purequery with the credentials in README.md.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: purequery-test-postgres
+    environment:
+      POSTGRES_USER: purequery
+      POSTGRES_PASSWORD: purequery
+      POSTGRES_DB: purequery_test
+    ports:
+      - "55432:5432"
+    volumes:
+      - ./db-init/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U purequery -d purequery_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # A second Postgres whose tables live ONLY in `public` - to compare the schema-grouped tree
+  # against a single-schema database (one schema row, or a future flat render).
+  postgres-public:
+    image: postgres:16
+    container_name: purequery-test-postgres-public
+    environment:
+      POSTGRES_USER: purequery
+      POSTGRES_PASSWORD: purequery
+      POSTGRES_DB: purequery_public
+    ports:
+      - "55433:5432"
+    volumes:
+      - ./db-init/postgres-public:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U purequery -d purequery_public"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mysql:
+    image: mysql:8
+    container_name: purequery-test-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: purequery_test
+      MYSQL_USER: purequery
+      MYSQL_PASSWORD: purequery
+    ports:
+      - "33061:3306"
+    volumes:
+      - ./db-init/mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "purequery", "-ppurequery"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # MongoDB - the first DOCUMENT engine. Port 27018 (host) so it never clashes with a local
+  # 27017. The seed in db-init/mongo runs against MONGO_INITDB_DATABASE on first boot.
+  mongo:
+    image: mongo:7
+    container_name: purequery-test-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: purequery
+      MONGO_INITDB_ROOT_PASSWORD: purequery
+      MONGO_INITDB_DATABASE: purequery_test
+    ports:
+      - "27018:27017"
+    volumes:
+      - ./db-init/mongo:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # SQL Server via Azure SQL Edge - the arm64-native engine (real mssql/server is amd64-only and
+  # segfaults under QEMU on Apple Silicon). Port 14330 (host) so it never clashes with a local 1433.
+  # azure-sql-edge does NOT auto-run an init dir, so a one-shot `mssql-seed` sidecar waits for health
+  # then runs db-init/sqlserver/*.sql via sqlcmd.
+  sqlserver:
+    image: mcr.microsoft.com/azure-sql-edge:1.0.7
+    container_name: purequery-test-sqlserver
+    environment:
+      ACCEPT_EULA: "1"
+      MSSQL_SA_PASSWORD: "purequery_test!2026"
+    ports:
+      - "14330:1433"
+    healthcheck:
+      # azure-sql-edge 1.0.7 bundles no sqlcmd, so probe the TDS port over bash's /dev/tcp instead.
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/1433' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # The mssql-tools image HAS sqlcmd; it waits for the server to accept logins (a retry loop, since
+  # the TCP-port healthcheck can be up before SQL auth is ready), then runs the seed.
+  mssql-seed:
+    image: mcr.microsoft.com/mssql-tools:latest
+    container_name: purequery-test-sqlserver-seed
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    volumes:
+      - ./db-init/sqlserver:/seed:ro
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        SQLCMD=/opt/mssql-tools/bin/sqlcmd
+        for i in $$(seq 1 30); do
+          if $$SQLCMD -S sqlserver -U sa -P "purequery_test!2026" -Q "SELECT 1" >/dev/null 2>&1; then
+            exec $$SQLCMD -S sqlserver -U sa -P "purequery_test!2026" -b -i /seed/01-seed.sql
+          fi
+          echo "waiting for sqlserver auth ($$i)..."; sleep 3
+        done
+        echo "sqlserver never became ready"; exit 1
