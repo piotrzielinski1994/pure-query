@@ -1,21 +1,6 @@
-import { fileURLToPath, URL } from "node:url";
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { createVitestConfig } from "@pziel/pureui/vitest";
 
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
-    },
-  },
-  test: {
-    globals: true,
-    environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}", "tests/**/*.spec.{ts,tsx}"],
-    // codemirror-json-schema ships ESM with extensionless relative imports that
-    // Vitest's externalized resolver can't follow; inline it so Vite transforms it.
-    server: { deps: { inline: ["codemirror-json-schema"] } },
-  },
+export default createVitestConfig({
+  appUrl: import.meta.url,
+  inlineDeps: ["codemirror-json-schema"],
 });
