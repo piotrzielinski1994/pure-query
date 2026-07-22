@@ -1,3 +1,4 @@
+import { createNoopWindowController } from "@pziel/pureui";
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { isTauri } from "@tauri-apps/api/core";
 import { useState } from "react";
@@ -12,10 +13,7 @@ import {
   getAppVersion,
 } from "@/lib/updater/update-controller";
 import { UpdaterProvider } from "@/lib/updater/updater-context";
-import {
-  createNoopWindowController,
-  createWindowController,
-} from "@/lib/window/window-controller";
+import { createWindowController } from "@/lib/window/window-controller";
 import { WindowFullscreenSync } from "@/lib/window/window-fullscreen-sync";
 
 // Only the real Tauri host has a window to drive; the dev-browser AND the jsdom test env (both
