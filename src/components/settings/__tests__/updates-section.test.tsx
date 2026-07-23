@@ -1,14 +1,13 @@
+import {
+  type UpdateController,
+  type UpdateInfo,
+  UpdaterProvider,
+} from "@pziel/pureui";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import { UpdatesSection } from "@/components/settings/updates-section";
-import type {
-  UpdateController,
-  UpdateInfo,
-} from "@/lib/updater/update-controller";
-import { UpdaterProvider } from "@/lib/updater/updater-context";
 
 vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), {
