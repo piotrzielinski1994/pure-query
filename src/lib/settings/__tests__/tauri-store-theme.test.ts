@@ -48,7 +48,7 @@ vi.mock("@tauri-apps/plugin-store", () => ({
 }));
 
 // The adapter also logs failures through the file logger - keep it inert.
-vi.mock("@/lib/logging/file-log", () => ({
+vi.mock("@/lib/logging/tauri-log-sink", () => ({
   logMessage: vi.fn(),
 }));
 

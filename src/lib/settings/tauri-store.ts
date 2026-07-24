@@ -1,5 +1,5 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
-import { logMessage } from "@/lib/logging/file-log";
+import { logMessage } from "@/lib/logging/tauri-log-sink";
 import {
   DEFAULT_SETTINGS,
   mergeSettings,
