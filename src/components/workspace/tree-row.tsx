@@ -1,5 +1,12 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { cn } from "@pziel/pureui";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+  cn,
+} from "@pziel/pureui";
 import { save } from "@tauri-apps/plugin-dialog";
 import { ChevronDown, ChevronRight, Table } from "lucide-react";
 import {
@@ -9,13 +16,6 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { useRequestDelete } from "@/components/workspace/delete-request-context";
 import { EngineIcon } from "@/components/workspace/engine-icon";
 import { useTreeDnd } from "@/components/workspace/tree-dnd";

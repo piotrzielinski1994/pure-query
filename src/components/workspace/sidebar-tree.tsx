@@ -9,7 +9,15 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { dragOverlayLabel, matchesAny } from "@pziel/pureui";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  dragOverlayLabel,
+  matchesAny,
+  ScrollArea,
+} from "@pziel/pureui";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -18,13 +26,6 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { DeleteNodeDialog } from "@/components/workspace/delete-node-dialog";
 import { DeleteRequestProvider } from "@/components/workspace/delete-request-context";
 import {

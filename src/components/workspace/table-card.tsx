@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
   matchesAny,
+  ScrollArea,
   toResult,
 } from "@pziel/pureui";
 import {
@@ -19,7 +20,6 @@ import {
 import { Plus, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   type Cell,
   type ColumnMeta,
