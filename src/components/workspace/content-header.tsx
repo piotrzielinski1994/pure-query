@@ -1,5 +1,9 @@
 import {
   Button,
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -11,12 +15,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Table, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { EngineIcon } from "@/components/workspace/engine-icon";
 import { SqlText } from "@/components/workspace/sql-text";
 import { Tab, TabBar } from "@/components/workspace/tab-bar";

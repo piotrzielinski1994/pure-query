@@ -1,9 +1,8 @@
 import type { EditorView } from "@codemirror/view";
-import { Button } from "@pziel/pureui";
+import { Button, ScrollArea } from "@pziel/pureui";
 import { Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   type Cell,
   type CopyFormat,

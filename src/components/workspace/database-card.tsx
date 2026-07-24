@@ -1,6 +1,5 @@
-import { cn } from "@pziel/pureui";
+import { cn, ScrollArea } from "@pziel/pureui";
 import { useEffect, useRef } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ObjectTab } from "@/components/workspace/object-tab";
 import { ScriptTab } from "@/components/workspace/script-tab";
 import { SettingsTab } from "@/components/workspace/settings-tab";

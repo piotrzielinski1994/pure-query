@@ -1,4 +1,12 @@
-import { cn, matchesAny } from "@pziel/pureui";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+  cn,
+  matchesAny,
+} from "@pziel/pureui";
 import {
   createColumnHelper,
   flexRender,
@@ -16,13 +24,6 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { FindBar } from "@/components/workspace/find-bar";
 import { toCsv, toJson } from "@/lib/export";
 import {

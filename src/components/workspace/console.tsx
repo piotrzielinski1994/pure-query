@@ -1,7 +1,6 @@
-import { cn } from "@pziel/pureui";
+import { cn, ScrollArea } from "@pziel/pureui";
 import { Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { SqlText } from "@/components/workspace/sql-text";
 import { Tab, TabBar } from "@/components/workspace/tab-bar";
 import {
