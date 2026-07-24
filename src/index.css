@@ -1,8 +1,1 @@
 @import "@pziel/pureui/styles/theme.css";
-
-/* Tailwind v4 auto-detects sources but skips node_modules, so utility classes
-   used ONLY inside @pziel/pureui components (e.g. the context-menu's
-   min-w-[10rem] and the scroll-area's bg-foreground/20) are never generated.
-   Explicitly scan the pureui bundle so its classes are emitted.
-   See docs/learnings.md. */
-@source "../node_modules/@pziel/pureui/dist";
